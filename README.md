@@ -53,6 +53,14 @@ Crea un proyecto ESP32 en [Wokwi](https://wokwi.com/projects/new/esp32) y copia 
 
 Copia `alcancia-wokwi/secretos.ejemplo.h` como `secretos.h` y complétalo. Ese archivo está excluido del repositorio. En `sketch.ino` cambia `MODO_SIMULACION` a `false`.
 
+## Publicar la app
+
+La app se sirve desde la rama `gh-pages`. Para actualizarla:
+
+```bash
+git subtree push --prefix alcancia-app origin gh-pages
+```
+
 ## Seguridad
 
 - La clave pública de `config.js` puede estar en el repositorio: las políticas RLS protegen los datos.
