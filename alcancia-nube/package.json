@@ -1,0 +1,11 @@
+{
+  "name": "alcancia-nube",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prueba": "node pruebas/integracion.mjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "2.45.4"
+  }
+}
