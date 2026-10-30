@@ -1,0 +1,12 @@
+{
+  "name": "Alcancía de colones",
+  "short_name": "Alcancía",
+  "lang": "es",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#14532d",
+  "theme_color": "#14532d",
+  "icons": [
+    { "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
