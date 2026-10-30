@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "author": "Proyecto IPM",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+
+    { "type": "wokwi-pushbutton", "id": "btn10", "top": -60, "left": -240, "attrs": { "color": "white", "label": "Moneda 10", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btn25", "top": 10, "left": -240, "attrs": { "color": "yellow", "label": "Moneda 25", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btn50", "top": 80, "left": -240, "attrs": { "color": "white", "label": "Moneda 50", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btn100", "top": 150, "left": -240, "attrs": { "color": "yellow", "label": "Moneda 100", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btn500", "top": 220, "left": -240, "attrs": { "color": "green", "label": "Moneda 500", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btnRaro", "top": 290, "left": -240, "attrs": { "color": "red", "label": "Objeto raro", "bounce": "0" } },
+    { "type": "wokwi-pushbutton", "id": "btnAbrir", "top": 290, "left": -60, "attrs": { "color": "blue", "label": "Abrir (app)", "bounce": "0" } },
+
+    { "type": "board-ssd1306", "id": "oled", "top": -130, "left": 150, "attrs": { "i2cAddress": "0x3c" } },
+    { "type": "wokwi-hx711", "id": "balanza", "top": -150, "left": -120, "attrs": { "type": "5kg" } },
+    { "type": "wokwi-servo", "id": "servo", "top": -10, "left": 320, "attrs": {} },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": 120, "left": 330, "attrs": { "volume": "0.2" } },
+
+    { "type": "wokwi-led", "id": "ledOk", "top": 90, "left": 210, "attrs": { "color": "green", "label": "OK" } },
+    { "type": "wokwi-resistor", "id": "rOk", "top": 170, "left": 200, "rotate": 0, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "ledError", "top": 90, "left": 260, "attrs": { "color": "red", "label": "ERROR" } },
+    { "type": "wokwi-resistor", "id": "rError", "top": 200, "left": 200, "rotate": 0, "attrs": { "value": "220" } },
+
+    { "type": "wokwi-relay-module", "id": "rele", "top": 260, "left": 110, "attrs": {} },
+    { "type": "wokwi-led", "id": "ledCerradura", "top": 230, "left": 320, "attrs": { "color": "orange", "label": "Cerradura" } },
+    { "type": "wokwi-resistor", "id": "rCerradura", "top": 320, "left": 310, "rotate": 0, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:32", "btn10:1.r", "white", [] ],
+    [ "btn10:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:33", "btn25:1.r", "gold", [] ],
+    [ "btn25:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:25", "btn50:1.r", "white", [] ],
+    [ "btn50:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:26", "btn100:1.r", "gold", [] ],
+    [ "btn100:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:27", "btn500:1.r", "green", [] ],
+    [ "btn500:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:4", "btnRaro:1.r", "red", [] ],
+    [ "btnRaro:2.r", "esp:GND.1", "black", [] ],
+    [ "esp:14", "btnAbrir:1.r", "blue", [] ],
+    [ "btnAbrir:2.r", "esp:GND.1", "black", [] ],
+
+    [ "esp:21", "oled:SDA", "blue", [] ],
+    [ "esp:22", "oled:SCL", "gold", [] ],
+    [ "esp:3V3", "oled:VCC", "red", [] ],
+    [ "esp:GND.2", "oled:GND", "black", [] ],
+
+    [ "esp:16", "balanza:DT", "green", [] ],
+    [ "esp:17", "balanza:SCK", "purple", [] ],
+    [ "esp:3V3", "balanza:VCC", "red", [] ],
+    [ "esp:GND.2", "balanza:GND", "black", [] ],
+
+    [ "esp:18", "servo:PWM", "orange", [] ],
+    [ "esp:5V", "servo:V+", "red", [] ],
+    [ "esp:GND.2", "servo:GND", "black", [] ],
+
+    [ "esp:19", "buzzer:2", "purple", [] ],
+    [ "esp:GND.2", "buzzer:1", "black", [] ],
+
+    [ "esp:13", "rOk:1", "green", [] ],
+    [ "rOk:2", "ledOk:A", "green", [] ],
+    [ "ledOk:C", "esp:GND.2", "black", [] ],
+    [ "esp:5", "rError:1", "red", [] ],
+    [ "rError:2", "ledError:A", "red", [] ],
+    [ "ledError:C", "esp:GND.2", "black", [] ],
+
+    [ "esp:23", "rele:IN", "orange", [] ],
+    [ "esp:5V", "rele:VCC", "red", [] ],
+    [ "esp:GND.3", "rele:GND", "black", [] ],
+    [ "esp:5V", "rele:COM", "red", [] ],
+    [ "rele:NO", "rCerradura:1", "orange", [] ],
+    [ "rCerradura:2", "ledCerradura:A", "orange", [] ],
+    [ "ledCerradura:C", "esp:GND.3", "black", [] ]
+  ],
+  "dependencies": {}
+}

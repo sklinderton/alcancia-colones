@@ -1,0 +1,205 @@
+:root {
+  color-scheme: light dark;
+  --fondo: #f6f4ee;
+  --superficie: #ffffff;
+  --texto: #1c2620;
+  --tenue: #5b665f;
+  --borde: #dcd9cf;
+  --marca: #14532d;
+  --marca-suave: #dcefe1;
+  --sobre-marca: #ffffff;
+  --peligro: #b3261e;
+  --oro: #c8972b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #111613;
+    --superficie: #1a211d;
+    --texto: #eef2ef;
+    --tenue: #a4afa8;
+    --borde: #303a34;
+    --marca: #6fcf97;
+    --marca-suave: #21382a;
+    --sobre-marca: #0b1a11;
+    --peligro: #f2b8b5;
+    --oro: #e2b64f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px 32px;
+}
+
+h1, h2 { margin: 0; font-weight: 600; line-height: 1.25; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+
+.encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.estado { color: var(--tenue); font-size: 13px; }
+
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.total {
+  margin: 4px 0 12px;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.etiqueta { color: var(--tenue); font-size: 14px; }
+
+progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 10px;
+  border: 0;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--marca-suave);
+}
+progress::-webkit-progress-bar { background: var(--marca-suave); }
+progress::-webkit-progress-value { background: var(--marca); }
+progress::-moz-progress-bar { background: var(--marca); }
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--tenue);
+  font-size: 13px;
+}
+
+.fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--borde);
+  font-variant-numeric: tabular-nums;
+}
+.fila:first-of-type { border-top: 0; }
+
+.moneda { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+
+.ficha {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--oro);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detalle { color: var(--tenue); font-size: 14px; }
+
+button {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--marca);
+  color: var(--sobre-marca);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secundario {
+  background: transparent;
+  color: var(--texto);
+  border: 1px solid var(--borde);
+}
+button.enlace {
+  min-height: 44px;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--tenue);
+  font-weight: 500;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--oro); outline-offset: 2px; }
+
+.acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+
+label { display: block; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+
+input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
+  padding: 0 12px;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--fondo);
+  color: var(--texto);
+  font: inherit;
+}
+
+.columna { display: grid; gap: 10px; }
+
+.error { min-height: 1.4em; margin: 8px 0; color: var(--peligro); font-size: 14px; }
+.ayuda { margin: 4px 0 12px; color: var(--tenue); font-size: 14px; }
+
+.aviso {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--marca-suave);
+  font-size: 14px;
+}
+
+.clave {
+  display: block;
+  margin: 4px 0 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--fondo);
+  font: 13px ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  background: var(--superficie);
+  color: var(--texto);
+}
+dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+dialog .acciones { margin: 8px 0 0; }
+
+.contador { display: flex; align-items: center; gap: 8px; }
+.contador button { width: 44px; min-height: 44px; padding: 0; }
+.contador output { min-width: 24px; text-align: center; font-weight: 700; }
