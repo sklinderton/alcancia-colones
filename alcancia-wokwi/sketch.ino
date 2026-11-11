@@ -1,13 +1,20 @@
 /*
  * Alcancía inteligente de colones - prototipo para Wokwi
  *
- * Flujo: entra una moneda -> se pesa -> se clasifica -> la pantalla y el
- * sonido confirman -> el servo inclina la bandeja hacia la alcancía o hacia
- * la devolución -> se genera el evento que irá a Supabase.
+ * Flujo: entra una moneda -> el monedero programable (CH-926) la reconoce y
+ * la deja caer a la alcancía -> envía un tren de pulsos según el canal -> el
+ * ESP32 cuenta los pulsos y sabe qué moneda fue -> la pantalla y el sonido
+ * confirman -> se genera el evento que irá a Supabase.
  *
- * En Wokwi la celda de carga simulada no distingue 1 g, así que con
- * MODO_SIMULACION = true cada botón equivale a "entró esta moneda" y genera
- * su peso con ruido. Con false se usan el sensor IR y el HX711 reales.
+ * El monedero se entrena con monedas reales de varios años de acuñación, así
+ * que las diferencias de peso y aleación entre emisiones las resuelve él. Lo
+ * que no reconoce lo devuelve por su salida de rechazo, donde un sensor IR
+ * avisa al ESP32.
+ *
+ * Wokwi no tiene monedero. Con MODO_SIMULACION = true cada botón hace de
+ * monedero: el GPIO 17 genera los mismos pulsos que el CH-926 y un cable los
+ * lleva al GPIO 16, así que el conteo de pulsos es el mismo código que en el
+ * hardware real. Con false, los pulsos llegan del monedero.
  *
  * Con SUPABASE_URL vacío funciona sin conexión. Al configurarlo, los eventos
  * entran a una cola y se envían a la Edge Function "dispositivo"; si no hay
@@ -17,8 +24,6 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <ESP32Servo.h>
-#include <HX711.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -43,61 +48,71 @@ const unsigned long REINTENTO_MS = 30000;  // Sin nube, reintenta menos para no 
 const unsigned long ESPERA_WIFI_MS = 10000;
 const int TAMANO_COLA = 32;
 const int EVENTOS_POR_ENVIO = 10;
+// Con la cola casi llena se apaga el monedero: sin poder registrarla, mejor
+// que la moneda salga por la devolución a que se cuente mal en la nube
+const int MARGEN_COLA = 2;
 
 // Conexiones
-const int PIN_HX711_DT = 16;
-const int PIN_HX711_SCK = 17;
-const int PIN_SERVO = 18;
+const int PIN_PULSOS = 16;           // Salida COIN del CH-926, por optoacoplador: LOW en cada pulso
+const int PIN_MONEDERO_ACTIVO = 18;  // Relé que da los 12 V al monedero
 const int PIN_BUZZER = 19;
-const int PIN_RELE = 23;
+const int PIN_RELE = 23;             // Cerradura solenoide
 const int PIN_LED_OK = 13;
 const int PIN_LED_ERROR = 5;
-const int PIN_IR = 34;  // Solo hardware real: FC-51 en LOW al detectar moneda
-const int PIN_ABRIR = 14;  // En la versión final esta orden viene de la app
+const int PIN_DEVOLUCION = 34;  // Solo hardware real: FC-51 en la salida de rechazo, LOW al pasar moneda
+const int PIN_ABRIR = 14;       // En la versión final esta orden viene de la app
 
-// Botones de simulación
-const int PIN_OBJETO_RARO = 4;
+// Solo simulación
+const int PIN_SIM_MONEDERO = 17;  // Genera los pulsos; en Wokwi va cableado al GPIO 16
+const int PIN_OBJETO_RARO = 4;    // Hace de sensor de la devolución
 const int PINES_MONEDA[] = {32, 33, 25, 26, 27};
 
-// Monedas en circulación, pesos oficiales del BCCR
+// Monedas en circulación
 struct Moneda {
   int valor;
-  float pesoGramos;
   int cantidad;
 };
 
 Moneda monedas[] = {
-  {10, 2.43, 0},
-  {25, 4.30, 0},
-  {50, 5.54, 0},
-  {100, 8.30, 0},
-  {500, 10.50, 0},
+  {10, 0},
+  {25, 0},
+  {50, 0},
+  {100, 0},
+  {500, 0},
 };
 const int TOTAL_DENOMINACIONES = sizeof(monedas) / sizeof(monedas[0]);
 
-// La menor diferencia es 1,24 g (₡25 y ₡50). Con 0,50 g queda una franja
-// muerta entre ambas: ante la duda la moneda se devuelve, no se cuenta mal.
-const float TOLERANCIA_GRAMOS = 0.50;
-const float PESO_OBJETO_RARO = 7.00;
-const float RUIDO_SIMULADO_GRAMOS = 0.12;
-const float FACTOR_CALIBRACION = 420.0;  // Se ajusta con la celda real
+// Programación del CH-926: cada canal (A-F) se entrena con una moneda y
+// envía una cantidad fija de pulsos. Si una denominación tiene emisiones muy
+// distintas, se entrena el canal F con la otra emisión y se agrega {6, índice}.
+struct Canal {
+  int pulsos;
+  int indiceMoneda;
+};
 
-// Posiciones del servo que inclina la bandeja
-const int ANGULO_DEVOLVER = 20;
-const int ANGULO_REPOSO = 90;
-const int ANGULO_ALCANCIA = 160;
+const Canal CANALES[] = {
+  {1, 0},  // A: ₡10
+  {2, 1},  // B: ₡25
+  {3, 2},  // C: ₡50
+  {4, 3},  // D: ₡100
+  {5, 4},  // E: ₡500
+};
+const int TOTAL_CANALES = sizeof(CANALES) / sizeof(CANALES[0]);
+
+// Tiempos del monedero en modo de pulso "medio" (50 ms)
+const unsigned long ANCHO_PULSO_MS = 50;
+const unsigned long PULSO_MINIMO_MS = 15;   // Flancos más seguidos son rebote o ruido
+const unsigned long FIN_MONEDA_MS = 300;    // Sin pulsos por este tiempo, la moneda terminó
+const unsigned long ARRANQUE_MONEDERO_MS = 1000;  // Al encender puede soltar pulsos falsos
 
 const unsigned long APERTURA_MS = 3000;  // El solenoide admite 5 s como máximo
 
 Adafruit_SSD1306 pantalla(128, 64, &Wire, -1);
-Servo bandeja;
-HX711 balanza;
 
 struct EventoPendiente {
   String id;
   String tipo;
   int valor;
-  float peso;
   String fecha;
 };
 
@@ -107,17 +122,45 @@ unsigned long numeroEvento = 0;
 unsigned long ultimaSincronizacion = 0;
 unsigned long esperaSincronizacion = SINCRONIZAR_MS;
 uint32_t idArranque = 0;  // Distingue los eventos entre reinicios
-volatile bool monedaDetectada = false;
+bool monederoActivo = false;
 
-void IRAM_ATTR alDetectarMoneda() {
-  monedaDetectada = true;
+portMUX_TYPE candadoPulsos = portMUX_INITIALIZER_UNLOCKED;
+volatile int pulsosContados = 0;
+volatile unsigned long ultimoPulsoMs = 0;
+volatile unsigned long ignorarPulsosHastaMs = 0;
+volatile bool monedaDevuelta = false;
+
+void IRAM_ATTR alRecibirPulso() {
+  unsigned long ahora = millis();
+  portENTER_CRITICAL_ISR(&candadoPulsos);
+  if ((long)(ahora - ignorarPulsosHastaMs) >= 0 && ahora - ultimoPulsoMs >= PULSO_MINIMO_MS) {
+    pulsosContados++;
+    ultimoPulsoMs = ahora;
+  }
+  portEXIT_CRITICAL_ISR(&candadoPulsos);
 }
 
-// Devuelve el índice de la moneda, o -1 si no coincide con ninguna
-int clasificar(float peso) {
-  for (int i = 0; i < TOTAL_DENOMINACIONES; i++) {
-    if (fabs(peso - monedas[i].pesoGramos) <= TOLERANCIA_GRAMOS) {
-      return i;
+void IRAM_ATTR alDevolverMoneda() {
+  monedaDevuelta = true;
+}
+
+// Devuelve los pulsos de una moneda que ya terminó de pasar, o 0 si no hay
+int leerMonedaTerminada() {
+  int pulsos = 0;
+  portENTER_CRITICAL(&candadoPulsos);
+  if (pulsosContados > 0 && millis() - ultimoPulsoMs >= FIN_MONEDA_MS) {
+    pulsos = pulsosContados;
+    pulsosContados = 0;
+  }
+  portEXIT_CRITICAL(&candadoPulsos);
+  return pulsos;
+}
+
+// Devuelve el índice de la moneda, o -1 si ningún canal envía esos pulsos
+int clasificar(int pulsos) {
+  for (int i = 0; i < TOTAL_CANALES; i++) {
+    if (CANALES[i].pulsos == pulsos) {
+      return CANALES[i].indiceMoneda;
     }
   }
   return -1;
@@ -139,13 +182,6 @@ String conMiles(long valor) {
   return texto;
 }
 
-// Número aleatorio con distribución normal (Box-Muller)
-float ruidoNormal(float desviacion) {
-  float u1 = (random(1, 10000)) / 10000.0;
-  float u2 = (random(1, 10000)) / 10000.0;
-  return desviacion * sqrt(-2.0 * log(u1)) * cos(2.0 * PI * u2);
-}
-
 void pitido(int frecuencia, int duracionMs) {
   long ciclos = (long)frecuencia * duracionMs / 1000;
   int medioPeriodo = 500000 / frecuencia;
@@ -161,7 +197,7 @@ void mostrarReposo() {
   pantalla.clearDisplay();
   pantalla.setTextSize(1);
   pantalla.setCursor(0, 0);
-  pantalla.print("ALCANCIA  colones");
+  pantalla.print(monederoActivo ? "ALCANCIA  colones" : "PAUSADA: sin nube");
   pantalla.setTextSize(2);
   pantalla.setCursor(0, 16);
   pantalla.print(conMiles(totalColones()));
@@ -184,15 +220,23 @@ void mostrarMensaje(const String &titulo, const String &detalle) {
   pantalla.display();
 }
 
-void inclinarBandeja(int angulo) {
-  bandeja.write(angulo);
-  delay(500);
-  bandeja.write(ANGULO_REPOSO);
-  delay(300);
-}
-
 bool nubeConfigurada() {
   return strlen(SUPABASE_URL) > 0;
+}
+
+// Enciende el monedero solo si queda espacio en la cola para registrar monedas
+void actualizarMonedero() {
+  bool debeEstarActivo = eventosEnCola <= TAMANO_COLA - MARGEN_COLA;
+  if (debeEstarActivo == monederoActivo) {
+    return;
+  }
+  monederoActivo = debeEstarActivo;
+  if (monederoActivo) {
+    ignorarPulsosHastaMs = millis() + ARRANQUE_MONEDERO_MS;
+  }
+  digitalWrite(PIN_MONEDERO_ACTIVO, monederoActivo ? HIGH : LOW);
+  Serial.println(monederoActivo ? "Monedero encendido" : "Cola llena: monedero apagado");
+  mostrarReposo();
 }
 
 // Devuelve la hora UTC en ISO 8601, o vacío si aún no se sincronizó el reloj
@@ -206,20 +250,26 @@ String fechaActual() {
   return String(texto);
 }
 
-void enviarEvento(const char *tipo, int valor, float peso) {
+void enviarEvento(const char *tipo, int valor) {
   numeroEvento++;
   EventoPendiente evento = {
-    String(idArranque, HEX) + "-" + String(numeroEvento), tipo, valor, peso, fechaActual()
+    String(idArranque, HEX) + "-" + String(numeroEvento), tipo, valor, fechaActual()
   };
-  Serial.printf("{\"id\":\"%s\",\"tipo\":\"%s\",\"denominacion\":%d,\"peso_g\":%.2f,\"total\":%ld}\n",
-                evento.id.c_str(), tipo, valor, peso, totalColones());
+  Serial.printf("{\"id\":\"%s\",\"tipo\":\"%s\",\"denominacion\":%d,\"total\":%ld}\n",
+                evento.id.c_str(), tipo, valor, totalColones());
 
-  if (nubeConfigurada()) {
-    cola[eventosEnCola++] = evento;
-    if (esperaSincronizacion == SINCRONIZAR_MS) {
-      ultimaSincronizacion = millis() - SINCRONIZAR_MS;  // Envía en la próxima vuelta
-    }
+  if (!nubeConfigurada()) {
+    return;
   }
+  if (eventosEnCola >= TAMANO_COLA) {
+    Serial.println("Cola llena: evento sin registrar en la nube");
+    return;
+  }
+  cola[eventosEnCola++] = evento;
+  if (esperaSincronizacion == SINCRONIZAR_MS) {
+    ultimaSincronizacion = millis() - SINCRONIZAR_MS;  // Envía en la próxima vuelta
+  }
+  actualizarMonedero();
 }
 
 void quitarDeCola(int cantidad) {
@@ -228,6 +278,8 @@ void quitarDeCola(int cantidad) {
   }
   eventosEnCola -= cantidad;
 }
+
+void abrirCerradura();
 
 // Envía eventos pendientes y recibe el saldo y las órdenes de la app
 void sincronizar() {
@@ -245,9 +297,6 @@ void sincronizar() {
     evento["tipo"] = cola[i].tipo;
     if (cola[i].valor > 0) {
       evento["denominacion"] = cola[i].valor;
-    }
-    if (cola[i].peso > 0) {
-      evento["peso_g"] = cola[i].peso;
     }
     if (cola[i].fecha.length() > 0) {
       evento["ocurrido_en"] = cola[i].fecha;
@@ -290,6 +339,7 @@ void sincronizar() {
   if (enviados > 0) {
     Serial.printf("Sincronizados: %d eventos\n", enviados);
   }
+  actualizarMonedero();
   if (eventosEnCola == 0) {
     for (int i = 0; i < TOTAL_DENOMINACIONES; i++) {
       monedas[i].cantidad = respuesta["conteo"][String(monedas[i].valor)] | 0;
@@ -314,49 +364,40 @@ void conectarWifi() {
   configTime(0, 0, "pool.ntp.org");
 }
 
-void aceptarMoneda(int indice, float peso) {
+void registrarMoneda(int pulsos) {
+  Serial.printf("Pulsos recibidos: %d\n", pulsos);
+  int indice = clasificar(pulsos);
+  if (indice < 0) {
+    // La moneda ya cayó a la alcancía pero no se sabe cuál fue: hay que revisar
+    // la programación del monedero o el ruido en el cable de pulsos
+    digitalWrite(PIN_LED_ERROR, HIGH);
+    mostrarMensaje("Revisar", String(pulsos) + " pulsos sin canal");
+    pitido(300, 300);
+    delay(700);
+    digitalWrite(PIN_LED_ERROR, LOW);
+    mostrarReposo();
+    return;
+  }
+
   monedas[indice].cantidad++;
   digitalWrite(PIN_LED_OK, HIGH);
   mostrarMensaje("+" + String(monedas[indice].valor), "Total: " + conMiles(totalColones()));
   pitido(1200, 80);
   pitido(1800, 120);
-  inclinarBandeja(ANGULO_ALCANCIA);
+  delay(300);
   digitalWrite(PIN_LED_OK, LOW);
-  enviarEvento("deposito", monedas[indice].valor, peso);
-}
-
-void rechazarObjeto(float peso) {
-  digitalWrite(PIN_LED_ERROR, HIGH);
-  mostrarMensaje("Rechazada", "Peso: " + String(peso, 2) + " g");
-  pitido(300, 300);
-  inclinarBandeja(ANGULO_DEVOLVER);
-  delay(700);
-  digitalWrite(PIN_LED_ERROR, LOW);
-  enviarEvento("rechazo", 0, peso);
-}
-
-void procesarPeso(float peso) {
-  Serial.printf("Peso medido: %.2f g\n", peso);
-  if (eventosEnCola >= TAMANO_COLA) {
-    // Sin espacio para registrarla, la moneda se devuelve para no perder el conteo
-    mostrarMensaje("Sin nube", "Intenta en un momento");
-    inclinarBandeja(ANGULO_DEVOLVER);
-    mostrarReposo();
-    return;
-  }
-
-  int indice = clasificar(peso);
-  if (indice >= 0) {
-    aceptarMoneda(indice, peso);
-  } else {
-    rechazarObjeto(peso);
-  }
+  enviarEvento("deposito", monedas[indice].valor);
   mostrarReposo();
 }
 
-float leerPesoReal() {
-  delay(400);  // Espera a que la moneda deje de vibrar en la bandeja
-  return balanza.get_units(10);
+void registrarDevolucion() {
+  digitalWrite(PIN_LED_ERROR, HIGH);
+  mostrarMensaje("Devuelta", "Moneda no reconocida");
+  pitido(300, 300);
+  delay(700);
+  digitalWrite(PIN_LED_ERROR, LOW);
+  enviarEvento("rechazo", 0);
+  mostrarReposo();
 }
 
 void abrirCerradura() {
@@ -364,8 +405,31 @@ void abrirCerradura() {
   digitalWrite(PIN_RELE, HIGH);
   delay(APERTURA_MS);
   digitalWrite(PIN_RELE, LOW);
-  enviarEvento("apertura", 0, 0);
+  enviarEvento("apertura", 0);
   mostrarReposo();
+}
+
+// Imita al CH-926: el pin pasa a LOW durante cada pulso
+void simularMonedero(int pulsos) {
+  if (!monederoActivo) {
+    registrarDevolucion();  // Apagado, el monedero deja salir la moneda por la devolución
+    return;
+  }
+  for (int i = 0; i < pulsos; i++) {
+    digitalWrite(PIN_SIM_MONEDERO, LOW);
+    delay(ANCHO_PULSO_MS);
+    digitalWrite(PIN_SIM_MONEDERO, HIGH);
+    delay(ANCHO_PULSO_MS);
+  }
+}
+
+int pulsosDeMoneda(int indiceMoneda) {
+  for (int i = 0; i < TOTAL_CANALES; i++) {
+    if (CANALES[i].indiceMoneda == indiceMoneda) {
+      return CANALES[i].pulsos;
+    }
+  }
+  return 0;
 }
 
 bool botonPresionado(int pin) {
@@ -382,50 +446,54 @@ bool botonPresionado(int pin) {
 void setup() {
   Serial.begin(115200);
 
-  for (int pin : PINES_MONEDA) {
-    pinMode(pin, INPUT_PULLUP);
-  }
-  pinMode(PIN_OBJETO_RARO, INPUT_PULLUP);
+  pinMode(PIN_PULSOS, INPUT_PULLUP);
+  pinMode(PIN_DEVOLUCION, INPUT);  // El GPIO 34 no tiene pull-up; el FC-51 maneja la línea
   pinMode(PIN_ABRIR, INPUT_PULLUP);
-  pinMode(PIN_IR, INPUT);
+  pinMode(PIN_MONEDERO_ACTIVO, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(PIN_RELE, OUTPUT);
   pinMode(PIN_LED_OK, OUTPUT);
   pinMode(PIN_LED_ERROR, OUTPUT);
 
+  if (MODO_SIMULACION) {
+    pinMode(PIN_SIM_MONEDERO, OUTPUT);
+    digitalWrite(PIN_SIM_MONEDERO, HIGH);
+    for (int pin : PINES_MONEDA) {
+      pinMode(pin, INPUT_PULLUP);
+    }
+    pinMode(PIN_OBJETO_RARO, INPUT_PULLUP);
+  } else {
+    attachInterrupt(digitalPinToInterrupt(PIN_DEVOLUCION), alDevolverMoneda, FALLING);
+  }
+  attachInterrupt(digitalPinToInterrupt(PIN_PULSOS), alRecibirPulso, FALLING);
+
   pantalla.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   pantalla.setTextColor(SSD1306_WHITE);
 
-  bandeja.attach(PIN_SERVO, 500, 2400);
-  bandeja.write(ANGULO_REPOSO);
-
-  balanza.begin(PIN_HX711_DT, PIN_HX711_SCK);
-  if (!MODO_SIMULACION) {
-    balanza.set_scale(FACTOR_CALIBRACION);
-    balanza.tare();
-    attachInterrupt(digitalPinToInterrupt(PIN_IR), alDetectarMoneda, FALLING);
-  }
-
   idArranque = esp_random();
-  randomSeed(idArranque);
-  mostrarReposo();
+  actualizarMonedero();
   conectarWifi();
-  Serial.println("Lista. Presiona un boton de moneda.");
+  Serial.println("Lista. Echa una moneda.");
 }
 
 void loop() {
   if (MODO_SIMULACION) {
     for (int i = 0; i < TOTAL_DENOMINACIONES; i++) {
       if (botonPresionado(PINES_MONEDA[i])) {
-        procesarPeso(monedas[i].pesoGramos + ruidoNormal(RUIDO_SIMULADO_GRAMOS));
+        simularMonedero(pulsosDeMoneda(i));
       }
     }
     if (botonPresionado(PIN_OBJETO_RARO)) {
-      procesarPeso(PESO_OBJETO_RARO + ruidoNormal(RUIDO_SIMULADO_GRAMOS));
+      registrarDevolucion();
     }
-  } else if (monedaDetectada) {
-    procesarPeso(leerPesoReal());
-    monedaDetectada = false;
+  } else if (monedaDevuelta) {
+    monedaDevuelta = false;
+    registrarDevolucion();
+  }
+
+  int pulsos = leerMonedaTerminada();
+  if (pulsos > 0) {
+    registrarMoneda(pulsos);
   }
 
   if (botonPresionado(PIN_ABRIR)) {

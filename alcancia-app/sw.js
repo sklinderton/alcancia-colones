@@ -1,6 +1,6 @@
 // Guarda la interfaz para que abra rápido; el saldo siempre viene de la red.
-const CACHE = "alcancia-v1";
-const ARCHIVOS = ["./", "index.html", "estilos.css", "app.js", "config.js", "icono.svg", "manifest.webmanifest"];
+const CACHE = "alcancia-v2";
+const ARCHIVOS = ["./", "index.html", "estilos.css", "app.js", "analisis.js", "config.js", "icono.svg", "manifest.webmanifest"];
 
 self.addEventListener("install", (evento) => {
   evento.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ARCHIVOS)));

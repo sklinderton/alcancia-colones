@@ -203,3 +203,20 @@ dialog .acciones { margin: 8px 0 0; }
 .contador { display: flex; align-items: center; gap: 8px; }
 .contador button { width: 44px; min-height: 44px; padding: 0; }
 .contador output { min-width: 24px; text-align: center; font-weight: 700; }
+
+/* Gráficos del análisis */
+.grafico { display: block; width: 100%; height: auto; overflow: visible; }
+.grafico text { font-size: 14px; font-variant-numeric: tabular-nums; }
+.grafico .eje { fill: var(--tenue); }
+.grafico .valor { fill: var(--texto); font-weight: 600; }
+.grafico .rejilla { stroke: var(--borde); stroke-width: 1; }
+.grafico .base { stroke: var(--tenue); stroke-width: 1; }
+.grafico .referencia { stroke: var(--oro); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.grafico .linea { fill: none; stroke: var(--marca); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.grafico .proyeccion { stroke: var(--marca); stroke-width: 2; stroke-dasharray: 2 5; stroke-linecap: round; }
+.grafico .punto { fill: var(--marca); stroke: var(--superficie); stroke-width: 2; }
+.grafico .punto-hueco { fill: var(--superficie); stroke: var(--marca); stroke-width: 2; }
+.grafico .barra { fill: var(--marca); }
+.grafico .barra.tenue { opacity: 0.45; }
+.grafico .zona { fill: transparent; }
+.grafico .zona:hover { fill: var(--marca-suave); opacity: 0.5; }
