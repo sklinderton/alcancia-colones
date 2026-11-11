@@ -1,6 +1,6 @@
 // App web instalable de la alcancía. Sin url en config.js abre en modo demostración.
 const DENOMINACIONES = [500, 100, 50, 25, 10];
-const TEXTO_EVENTO = { deposito: "Depósito", retiro: "Retiro", rechazo: "Objeto rechazado", apertura: "Alcancía abierta" };
+const TEXTO_EVENTO = { deposito: "Depósito", retiro: "Retiro", rechazo: "Moneda devuelta", apertura: "Alcancía abierta" };
 
 const { url, anonKey } = window.ALCANCIA_CONFIG;
 const modoDemo = !url;
@@ -101,6 +101,66 @@ function textoEvento(evento) {
 const fechaCorta = (fecha) => new Date(fecha).toLocaleString("es-CR", {
   day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
 });
+const fechaLarga = (fecha) => fecha.toLocaleDateString("es-CR", { day: "numeric", month: "long" });
+const porcentaje = (fraccion) => `${(fraccion * 100).toLocaleString("es-CR", { maximumFractionDigits: 1 })} %`;
+
+// Análisis del historial completo guardado en la nube
+function seccionesAnalisis() {
+  const meta = estado.alcancia.meta_colones;
+  const analisis = calcularAnalisis(estado.eventos, meta);
+  if (analisis.serie.length === 0) {
+    return [elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Análisis"),
+      elemento("p", { class: "ayuda" }, "Cuando eches monedas, aquí verás cómo crece tu ahorro y cuándo ahorras más."))];
+  }
+
+  let proyeccion = "Sin ahorro en las últimas 4 semanas todavía no se puede estimar cuándo llegarás a la meta.";
+  if (analisis.saldo >= meta) {
+    proyeccion = "¡Llegaste a la meta!";
+  } else if (analisis.fechaMeta) {
+    const semanal = Math.round(analisis.ritmoDiario * 7);
+    proyeccion = `Al ritmo de ${colones(semanal)} por semana, llegarás a la meta cerca del ${fechaLarga(analisis.fechaMeta)}.`;
+  }
+
+  const diaPico = analisis.porDia.indexOf(Math.max(...analisis.porDia));
+  const habitos = analisis.horaPico === null
+    ? "Todavía no hay depósitos para ver tus hábitos."
+    : `Ahorras más los ${NOMBRES_DIA_PLURAL[diaPico]}, y la hora con más depósitos es de ${analisis.horaPico}:00 a ${analisis.horaPico + 1}:00.`;
+
+  const secciones = [
+    elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Tu ahorro en el tiempo"),
+      elemento("p", { class: "ayuda" }, proyeccion),
+      graficoAhorro(analisis, meta, colones)),
+    elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Cuándo ahorras"),
+      elemento("p", { class: "ayuda" }, habitos),
+      graficoSemana(analisis.porDia)),
+    elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Depósitos y retiros"),
+      elemento("div", { class: "fila" },
+        elemento("span", {}, "Depositado"),
+        elemento("span", { class: "detalle" }, colones(analisis.depositado))),
+      elemento("div", { class: "fila" },
+        elemento("span", {}, "Retirado"),
+        elemento("span", { class: "detalle" }, analisis.depositado > 0
+          ? `${colones(analisis.retirado)} (${porcentaje(analisis.retirado / analisis.depositado)})`
+          : colones(analisis.retirado)))),
+  ];
+
+  if (analisis.tasaDevueltas !== null) {
+    const revisar = analisis.tasaDevueltas > 0.05;
+    secciones.push(elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Monedas devueltas"),
+      elemento("div", { class: "fila" },
+        elemento("span", {}, `${analisis.devueltas} de ${analisis.aceptadas + analisis.devueltas} monedas`),
+        elemento("span", { class: "detalle" }, porcentaje(analisis.tasaDevueltas))),
+      elemento("p", { class: "ayuda" }, revisar
+        ? "Más del 5 % vuelve a salir: conviene entrenar el monedero con más monedas de distintos años."
+        : "El monedero reconoce bien las monedas. Si pasa del 5 %, conviene volver a entrenarlo.")));
+  }
+  return secciones;
+}
 
 function mostrarPanel() {
   const meta = estado.alcancia.meta_colones;
@@ -127,6 +187,7 @@ function mostrarPanel() {
       ...DENOMINACIONES.map((valor) => elemento("div", { class: "fila" },
         elemento("span", { class: "moneda" }, elemento("span", { class: "ficha" }, String(valor)), textoMonedas(estado.conteo[valor])),
         elemento("span", { class: "detalle" }, colones(valor * estado.conteo[valor]))))),
+    ...seccionesAnalisis(),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Actividad reciente"),
       ...(estado.eventos.length === 0
@@ -228,10 +289,57 @@ function escucharEventos() {
     });
 }
 
+// Ocho semanas de ejemplo, siempre iguales: más monedas los viernes y sábados por la tarde
+function eventosDemo(ahora = new Date()) {
+  let semilla = 7;
+  const azar = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
+  const frecuencia = [[10, 3], [25, 2], [50, 3], [100, 4], [500, 1]];
+  const elegirMoneda = () => {
+    let resto = azar() * 13;
+    for (const [valor, peso] of frecuencia) {
+      resto -= peso;
+      if (resto < 0) return valor;
+    }
+    return 10;
+  };
+
+  const eventos = [];
+  const conteo = Object.fromEntries(DENOMINACIONES.map((valor) => [valor, 0]));
+  const agregar = (evento) => eventos.push({ id: `demo-${eventos.length}`, cantidad: 1, ...evento });
+  for (let atras = 55; atras >= 0; atras--) {
+    const dia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - atras);
+    const finDeSemana = dia.getDay() === 5 || dia.getDay() === 6;
+    const monedas = Math.floor(azar() * (finDeSemana ? 5 : 3));
+    for (let i = 0; i < monedas; i++) {
+      const fecha = new Date(dia);
+      fecha.setHours(azar() < 0.15 ? 7 : 17 + Math.floor(azar() * 3), Math.floor(azar() * 60));
+      if (fecha > ahora) continue;
+      if (azar() < 0.05) {
+        agregar({ tipo: "rechazo", ocurrido_en: fecha.toISOString() });
+        continue;
+      }
+      const valor = elegirMoneda();
+      conteo[valor]++;
+      agregar({ tipo: "deposito", origen: "dispositivo", denominacion: valor, ocurrido_en: fecha.toISOString() });
+    }
+    if (atras === 20 && conteo[100] > 0) {
+      const fecha = new Date(dia);
+      fecha.setHours(12, 0);
+      const cantidad = Math.min(5, conteo[100]);
+      conteo[100] -= cantidad;
+      agregar({ tipo: "apertura", ocurrido_en: fecha.toISOString() });
+      agregar({ tipo: "retiro", origen: "app", denominacion: 100, cantidad, ocurrido_en: new Date(fecha.getTime() + 60000).toISOString() });
+    }
+  }
+  eventos.sort((a, b) => new Date(b.ocurrido_en) - new Date(a.ocurrido_en));
+  return { eventos, conteo };
+}
+
 function cargarDemo() {
+  const { eventos, conteo } = eventosDemo();
   estado.alcancia = { nombre: "Alcancía de ejemplo", meta_colones: 10000 };
-  estado.conteo = { 500: 3, 100: 7, 50: 4, 25: 2, 10: 5 };
-  estado.eventos = [{ id: "demo-1", tipo: "deposito", denominacion: 100, cantidad: 1, ocurrido_en: new Date().toISOString() }];
+  estado.conteo = conteo;
+  estado.eventos = eventos;
   mostrarPanel();
 }
 
@@ -261,7 +369,8 @@ async function iniciar() {
   estado.alcancia = alcancias[0];
   const [{ data: saldo }, { data: eventos }] = await Promise.all([
     supabase.from("saldo_por_denominacion").select("denominacion, cantidad").eq("alcancia_id", estado.alcancia.id),
-    supabase.from("eventos").select("*").eq("alcancia_id", estado.alcancia.id).order("ocurrido_en", { ascending: false }).limit(20),
+    // El historial completo alimenta el análisis; 1000 es el máximo por consulta de Supabase
+    supabase.from("eventos").select("*").eq("alcancia_id", estado.alcancia.id).order("ocurrido_en", { ascending: false }).limit(1000),
   ]);
   for (const valor of DENOMINACIONES) estado.conteo[valor] = 0;
   for (const fila of saldo ?? []) estado.conteo[fila.denominacion] = fila.cantidad;
