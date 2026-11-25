@@ -49,9 +49,11 @@ Hoy hay 21 eventos reales de 1 alcancía en 2 días, todos de pruebas. Alcanza p
 
 **Duración:** al menos 2 semanas, mejor 3.
 
-1. Cada participante entra a la app con GitHub y crea su alcancía con una meta propia. Guarda su código y su clave.
-2. Usa el circuito de Wokwi con su código y su clave (sin guardar el proyecto). Cada vez que recibe vuelto en la vida real, echa en Wokwi las mismas monedas y billetes ese mismo día.
+1. Cada participante abre la app en su teléfono, toca **Empezar sin cuenta** y crea su alcancía con una meta propia. No necesita GitHub ni Wokwi.
+2. Cada vez que recibe vuelto en la vida real, toca en **Echar dinero** las mismas monedas y billetes ese mismo día. La alcancía virtual envía los depósitos a la nube igual que el ESP32.
 3. Cuando gasta efectivo ahorrado, hace un retiro desde la app con **Hacer retiro**.
 4. Al final, `descargar_eventos.py` y el cuaderno con `FUENTE = "real"`.
+
+La columna `fuente` de `eventos.csv` dice de dónde vino cada evento: `esp32` (la alcancía física o Wokwi), `alcancia_virtual` (los botones de la app) o `app` (retiros). Así el análisis puede separar los datos del prototipo de los de la alcancía física.
 
 Para las preguntas de IPM, al cierre cada participante hace tres tareas cronometradas (decir su saldo, hacer un retiro de ₡1000 y cambiar la meta) y responde el cuestionario SUS de 10 preguntas. Los tiempos, los errores y el puntaje SUS responden "¿qué cambiarían en la interfaz?".

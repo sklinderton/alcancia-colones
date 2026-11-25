@@ -228,3 +228,32 @@ dialog .acciones { margin: 8px 0 0; }
 .ficha.billete { width: 56px; height: 34px; border-radius: 6px; font-size: 12px; }
 
 .meta .enlace { min-height: 32px; padding: 0 2px; font-size: 13px; text-decoration: underline; }
+
+/* Alcancía virtual: imita la pantalla del ESP32 y usa botones grandes */
+.pantalla-virtual {
+  margin-bottom: 12px;
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: #06110a;
+  color: #7ef0a6;
+  font-family: ui-monospace, Consolas, monospace;
+  text-align: center;
+}
+.pantalla-virtual .ultimo { font-size: 40px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pantalla-virtual .detalle-pantalla { margin-top: 6px; font-size: 14px; color: #b8f5cc; }
+
+.rejilla-billetes { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+.rejilla-monedas { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 12px; margin-top: 10px; justify-items: center; }
+
+button.echar {
+  border: 2px solid var(--oro);
+  background: var(--marca-suave);
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+button.echar:active { transform: scale(0.95); }
+button.echar.billete { min-height: 64px; border-radius: 8px; font-size: 18px; }
+button.echar.moneda { display: grid; place-items: center; width: 76px; height: 76px; padding: 0; border-radius: 50%; font-size: 20px; }
+
+details { margin: 8px 0 12px; }
+summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }

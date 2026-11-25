@@ -53,12 +53,198 @@ function mostrarLogin(mensaje = "") {
     if (error) mostrarLogin("No se pudo abrir GitHub. Intenta de nuevo.");
   };
 
+  // Para cualquier persona: sin crear cuenta, la sesión queda en este teléfono
+  const entrarSinCuenta = async () => {
+    const { error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      mostrarLogin("No se pudo entrar sin cuenta. Intenta de nuevo o entra con GitHub.");
+      return;
+    }
+    iniciar();
+  };
+
   raiz.replaceChildren(elemento("div", { class: "tarjeta" },
     elemento("h1", {}, "Tu alcancía"),
-    elemento("p", { class: "ayuda" }, "Inicia sesión para ver tu saldo desde cualquier lugar."),
+    elemento("p", { class: "ayuda" }, "Guarda tu vuelto y mira cuánto llevas desde el teléfono."),
     elemento("p", { class: "error", role: "alert" }, mensaje),
     elemento("div", { class: "columna" },
-      elemento("button", { onclick: entrar }, "Entrar con GitHub"))));
+      elemento("button", { onclick: entrarSinCuenta }, "Empezar sin cuenta"),
+      elemento("button", { class: "secundario", onclick: entrar }, "Entrar con GitHub")),
+    elemento("p", { class: "ayuda" }, "Sin cuenta, tu alcancía queda guardada en este teléfono.")));
+}
+
+// ---------- Alcancía virtual: hace de ESP32 desde el teléfono ----------
+// Guarda el código y la clave del dispositivo solo en este navegador y envía
+// los depósitos a la misma Edge Function que usa la alcancía física.
+const claveVirtual = (id) => `alcancia-virtual:${id}`;
+const claveCola = (id) => `alcancia-virtual-cola:${id}`;
+
+function leerLocal(clave, porDefecto) {
+  try {
+    return JSON.parse(localStorage.getItem(clave)) ?? porDefecto;
+  } catch {
+    return porDefecto;
+  }
+}
+
+function guardarLocal(clave, valor) {
+  try {
+    if (valor === null) localStorage.removeItem(clave);
+    else localStorage.setItem(clave, JSON.stringify(valor));
+  } catch {
+    // Sin almacenamiento (modo privado): la alcancía virtual pedirá los datos otra vez
+  }
+}
+
+const dispositivoVirtual = () => (estado.alcancia ? leerLocal(claveVirtual(estado.alcancia.id), null) : null);
+
+function mostrarCredenciales({ alcancia_id: alcanciaId, codigo, clave }) {
+  guardarLocal(claveVirtual(alcanciaId), { codigo, clave });
+  raiz.replaceChildren(elemento("div", { class: "tarjeta" },
+    elemento("h1", {}, "Tu alcancía está lista"),
+    elemento("p", { class: "ayuda" }, "Ya puedes echar dinero desde este teléfono con \"Echar dinero\"."),
+    elemento("details", {},
+      elemento("summary", {}, "Datos para la alcancía física (ESP32)"),
+      elemento("p", { class: "ayuda" }, "Si armas la alcancía física, copia estos datos en el firmware. Solo se muestran esta vez."),
+      elemento("span", { class: "etiqueta" }, "CODIGO_ALCANCIA"),
+      elemento("code", { class: "clave" }, codigo),
+      elemento("span", { class: "etiqueta" }, "CLAVE_ALCANCIA"),
+      elemento("code", { class: "clave" }, clave)),
+    elemento("div", { class: "columna" }, elemento("button", { onclick: iniciar }, "Empezar"))));
+}
+
+const virtual = { ultimo: "", estado: "", enviando: false };
+
+function sonidoDeposito() {
+  try {
+    const audio = new (window.AudioContext || window.webkitAudioContext)();
+    [[1200, 0, 0.08], [1800, 0.09, 0.12]].forEach(([frecuencia, inicio, duracion]) => {
+      const tono = audio.createOscillator();
+      const volumen = audio.createGain();
+      tono.frequency.value = frecuencia;
+      volumen.gain.value = 0.08;
+      tono.connect(volumen).connect(audio.destination);
+      tono.start(audio.currentTime + inicio);
+      tono.stop(audio.currentTime + inicio + duracion);
+    });
+  } catch {
+    // Sin sonido: la pantalla y la vibración igual confirman
+  }
+  navigator.vibrate?.(30);
+}
+
+async function echarVirtual(valor) {
+  sonidoDeposito();
+  virtual.ultimo = `+${colones(valor)}`;
+  const evento = { id: `virtual-${crypto.randomUUID()}`, tipo: "deposito", denominacion: valor, ocurrido_en: new Date().toISOString() };
+  if (modoDemo) {
+    aplicarEvento({ ...evento, cantidad: 1, origen: "dispositivo" });
+    virtual.estado = `Guardado. Total: ${colones(total())}`;
+    mostrarAlcanciaVirtual();
+    return;
+  }
+  const cola = leerLocal(claveCola(estado.alcancia.id), []);
+  cola.push(evento);
+  guardarLocal(claveCola(estado.alcancia.id), cola);
+  virtual.estado = "Guardando…";
+  mostrarAlcanciaVirtual();
+  await enviarColaVirtual();
+}
+
+// Envía los depósitos pendientes; si falla la red quedan para el próximo intento
+async function enviarColaVirtual() {
+  const dispositivo = dispositivoVirtual();
+  if (virtual.enviando || !dispositivo) return;
+  virtual.enviando = true;
+  try {
+    let cola = leerLocal(claveCola(estado.alcancia.id), []);
+    while (cola.length > 0) {
+      const lote = cola.slice(0, 20);
+      const respuesta = await fetch(`${url}/functions/v1/dispositivo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-clave-dispositivo": dispositivo.clave },
+        body: JSON.stringify({ codigo: dispositivo.codigo, eventos: lote }),
+      });
+      if (respuesta.status === 401) {
+        guardarLocal(claveVirtual(estado.alcancia.id), null);
+        virtual.estado = "El código o la clave no son de esta alcancía. Vuelve a conectarla.";
+        break;
+      }
+      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+      const { conteo } = await respuesta.json();
+      for (const evento of lote) {
+        if (!estado.eventos.some((conocido) => conocido.id === evento.id)) {
+          estado.eventos.unshift({ ...evento, cantidad: 1, origen: "dispositivo" });
+        }
+      }
+      cola = leerLocal(claveCola(estado.alcancia.id), []).slice(lote.length);
+      guardarLocal(claveCola(estado.alcancia.id), cola);
+      for (const valor of DENOMINACIONES) estado.conteo[valor] = conteo?.[valor] ?? 0;
+      virtual.estado = `Guardado. Total: ${colones(total())}`;
+    }
+  } catch {
+    const pendientes = leerLocal(claveCola(estado.alcancia.id), []).length;
+    virtual.estado = `Sin conexión: ${pendientes} pendiente${pendientes === 1 ? "" : "s"}, se enviará${pendientes === 1 ? "" : "n"} después.`;
+  } finally {
+    virtual.enviando = false;
+    if (estado.vista === "virtual") mostrarAlcanciaVirtual();
+  }
+}
+
+function formularioConexionVirtual() {
+  const error = elemento("p", { class: "error", role: "alert" });
+  const codigo = elemento("input", { name: "codigo", placeholder: "alcancia-xxxxxx", required: true, autocomplete: "off" });
+  const clave = elemento("input", { name: "clave", required: true, autocomplete: "off", spellcheck: false });
+  const conectar = (evento) => {
+    evento.preventDefault();
+    guardarLocal(claveVirtual(estado.alcancia.id), { codigo: codigo.value.trim(), clave: clave.value.trim() });
+    virtual.estado = "";
+    mostrarAlcanciaVirtual();
+  };
+  return elemento("section", { class: "tarjeta" },
+    elemento("h2", {}, "Conecta esta alcancía"),
+    elemento("p", { class: "ayuda" }, "Escribe el código y la clave que recibiste al crear la alcancía. Se guardan solo en este teléfono."),
+    elemento("form", { onsubmit: conectar },
+      elemento("label", {}, "Código", codigo),
+      elemento("label", {}, "Clave", clave),
+      error,
+      elemento("div", { class: "columna" }, elemento("button", { type: "submit" }, "Conectar"))));
+}
+
+function mostrarAlcanciaVirtual() {
+  estado.vista = "virtual";
+  const conectada = modoDemo || dispositivoVirtual();
+  const boton = (valor) => elemento("button", {
+    type: "button",
+    class: esBillete(valor) ? "echar billete" : "echar moneda",
+    "aria-label": `Echar ${esBillete(valor) ? "un billete" : "una moneda"} de ${colones(valor)}`,
+    onclick: () => echarVirtual(valor),
+  }, esBillete(valor) ? colones(valor) : String(valor));
+
+  raiz.replaceChildren(...[
+    elemento("header", { class: "encabezado" },
+      elemento("div", {},
+        elemento("h1", {}, "Echar dinero"),
+        elemento("div", { class: "estado" }, "Alcancía virtual")),
+      elemento("button", { class: "enlace", onclick: volverAlPanel }, "Volver")),
+    conectada ? elemento("section", { class: "pantalla-virtual", "aria-live": "polite" },
+      elemento("div", { class: "ultimo" }, virtual.ultimo || colones(total())),
+      elemento("div", { class: "detalle-pantalla" }, virtual.estado || "Toca lo que vas a guardar")) : null,
+    conectada ? elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Billetes"),
+      elemento("div", { class: "rejilla-billetes" }, ...[...BILLETES].reverse().map(boton))) : null,
+    conectada ? elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Monedas"),
+      elemento("div", { class: "rejilla-monedas" }, ...[...MONEDAS].reverse().map(boton))) : null,
+    conectada ? null : formularioConexionVirtual(),
+  ].filter((parte) => parte !== null));
+}
+
+function volverAlPanel() {
+  estado.vista = "panel";
+  virtual.ultimo = "";
+  virtual.estado = "";
+  mostrarPanel();
 }
 
 function mostrarCrearAlcancia() {
@@ -87,17 +273,6 @@ function mostrarCrearAlcancia() {
       elemento("label", {}, "Meta en colones", meta),
       error,
       elemento("div", { class: "columna" }, elemento("button", { type: "submit" }, "Crear alcancía")))));
-}
-
-function mostrarCredenciales({ codigo, clave }) {
-  raiz.replaceChildren(elemento("div", { class: "tarjeta" },
-    elemento("h1", {}, "Datos para el ESP32"),
-    elemento("p", { class: "ayuda" }, "Copia la clave en el firmware. Solo se muestra esta vez."),
-    elemento("span", { class: "etiqueta" }, "CODIGO_ALCANCIA"),
-    elemento("code", { class: "clave" }, codigo),
-    elemento("span", { class: "etiqueta" }, "CLAVE_ALCANCIA"),
-    elemento("code", { class: "clave" }, clave),
-    elemento("div", { class: "columna" }, elemento("button", { onclick: iniciar }, "Ya la guardé"))));
 }
 
 function textoEvento(evento) {
@@ -182,7 +357,7 @@ function mostrarPanel() {
       elemento("div", {},
         elemento("h1", {}, estado.alcancia.nombre),
         elemento("div", { class: "estado" }, modoDemo ? "Datos de ejemplo" : estado.conectado ? "En vivo" : "Reconectando…")),
-      modoDemo ? null : elemento("button", { class: "enlace", onclick: () => supabase.auth.signOut().then(iniciar) }, "Salir")),
+      modoDemo ? null : elemento("button", { class: "enlace", onclick: salir }, "Salir")),
     modoDemo ? elemento("div", { class: "aviso" }, "Modo demostración: nada de esto es dinero real.") : null,
     estado.aviso ? elemento("div", { class: "aviso" }, estado.aviso) : null,
     elemento("section", { class: "tarjeta", "aria-label": "Saldo" },
@@ -196,8 +371,9 @@ function mostrarPanel() {
           : `${Math.floor((total() / meta) * 100)} % de la meta`),
         elemento("span", {}, `Meta ${colones(meta)} `,
           elemento("button", { class: "enlace", onclick: abrirMeta }, "Cambiar")))),
-    elemento("div", { class: "acciones una" },
-      elemento("button", { onclick: abrirRetiro, disabled: total() === 0 }, "Hacer retiro")),
+    elemento("div", { class: "acciones" },
+      elemento("button", { onclick: mostrarAlcanciaVirtual }, "Echar dinero"),
+      elemento("button", { class: "secundario", onclick: abrirRetiro, disabled: total() === 0 }, "Hacer retiro")),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Billetes"),
       ...BILLETES.map(filaDenominacion)),
@@ -223,7 +399,19 @@ function aplicarEvento(evento) {
   if (evento.tipo === "apertura") {
     estado.aviso = "La alcancía se abrió: saca lo que registraste.";
   }
-  mostrarPanel();
+  dibujarVista();
+}
+
+// Redibuja la pantalla en la que está la persona sin sacarla de ella
+function dibujarVista() {
+  if (estado.vista === "virtual") mostrarAlcanciaVirtual();
+  else mostrarPanel();
+}
+
+async function salir() {
+  if (estado.anonimo && !confirm("Entraste sin cuenta: si sales, no podrás volver a esta alcancía. ¿Salir de todas formas?")) return;
+  await supabase.auth.signOut();
+  iniciar();
 }
 
 // La orden de abrir llega al ESP32 en la siguiente sincronización
@@ -317,9 +505,13 @@ async function confirmarRetiro(evento) {
   // Un solo paso: el retiro queda registrado y la alcancía se abre para sacarlo
   const ordenEnviada = await pedirApertura();
   if (!modoDemo) {
-    estado.aviso = ordenEnviada
-      ? "Retiro registrado. La alcancía se abrirá en unos 10 segundos."
-      : "Retiro registrado, pero no se pudo enviar la orden de abrir. Revisa tu conexión.";
+    if (dispositivoVirtual()) {
+      estado.aviso = "Retiro registrado.";  // La alcancía virtual no tiene cerradura que abrir
+    } else {
+      estado.aviso = ordenEnviada
+        ? "Retiro registrado. La alcancía se abrirá en unos 10 segundos."
+        : "Retiro registrado, pero no se pudo enviar la orden de abrir. Revisa tu conexión.";
+    }
   }
   mostrarPanel();
 }
@@ -336,7 +528,7 @@ function escucharEventos() {
     }, ({ new: evento }) => aplicarEvento(evento))
     .subscribe((estadoCanal) => {
       estado.conectado = estadoCanal === "SUBSCRIBED";
-      mostrarPanel();
+      dibujarVista();
     });
 }
 
@@ -402,6 +594,8 @@ async function iniciar() {
   }
 
   const { data: { session: sesion } } = await supabase.auth.getSession();
+  estado.vista = "panel";
+  estado.anonimo = Boolean(sesion?.user?.is_anonymous);
   if (!sesion) {
     canal?.unsubscribe();
     mostrarLogin();
@@ -429,6 +623,7 @@ async function iniciar() {
   estado.eventos = eventos ?? [];
   mostrarPanel();
   escucharEventos();
+  enviarColaVirtual();  // Depósitos que quedaron sin enviar la última vez
 }
 
 document.getElementById("formulario-retiro").addEventListener("submit", confirmarRetiro);

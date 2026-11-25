@@ -16,10 +16,18 @@ type EventoEntrante = {
   ocurrido_en?: string;
 };
 
+// La alcancía virtual de la app llama desde el navegador; la autoriza la clave
+// del dispositivo, no una cookie, así que cualquier origen puede llamar
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "content-type, x-clave-dispositivo, authorization, apikey",
+};
+
 const responder = (cuerpo: unknown, estado = 200) =>
   new Response(JSON.stringify(cuerpo), {
     status: estado,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json" },
   });
 
 async function sha256(texto: string) {
@@ -37,6 +45,7 @@ function eventoValido(evento: EventoEntrante) {
 }
 
 Deno.serve(async (solicitud) => {
+  if (solicitud.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (solicitud.method !== "POST") return responder({ error: "Método no permitido" }, 405);
 
   const cuerpo = await solicitud.json().catch(() => null);

@@ -38,6 +38,13 @@ def leer_tabla(url_base, clave, tabla, columnas, orden):
         desde += POR_PAGINA
 
 
+def fuente(evento):
+    # La alcancía virtual de la app marca sus eventos con el prefijo "virtual-"
+    if evento["origen"] == "app":
+        return "app"
+    return "alcancia_virtual" if evento["id"].startswith("virtual-") else "esp32"
+
+
 def escribir_csv(ruta, filas, columnas):
     with open(ruta, "w", newline="", encoding="utf-8") as archivo:
         escritor = csv.DictWriter(archivo, fieldnames=columnas)
@@ -53,7 +60,7 @@ def main():
 
     alcancias = leer_tabla(url_base, clave, "alcancias", "id,meta_colones,creada_en", "creada_en")
     eventos = leer_tabla(url_base, clave, "eventos",
-                         "alcancia_id,tipo,denominacion,cantidad,origen,ocurrido_en", "ocurrido_en")
+                         "id,alcancia_id,tipo,denominacion,cantidad,origen,ocurrido_en", "ocurrido_en")
 
     # Anonimiza: el orden de creación decide el número de usuario
     alias = {a["id"]: f"usuario_{i}" for i, a in enumerate(alcancias, start=1)}
@@ -66,9 +73,9 @@ def main():
     escribir_csv(CARPETA_DATOS / "eventos.csv",
                  [{"usuario": alias.get(e["alcancia_id"], "desconocido"), "tipo": e["tipo"],
                    "denominacion": e["denominacion"] or "", "cantidad": e["cantidad"],
-                   "origen": e["origen"], "ocurrido_en": e["ocurrido_en"]}
+                   "origen": e["origen"], "fuente": fuente(e), "ocurrido_en": e["ocurrido_en"]}
                   for e in eventos],
-                 ["usuario", "tipo", "denominacion", "cantidad", "origen", "ocurrido_en"])
+                 ["usuario", "tipo", "denominacion", "cantidad", "origen", "fuente", "ocurrido_en"])
     print(f"{len(alcancias)} alcancías y {len(eventos)} eventos guardados en {CARPETA_DATOS}")
 
 

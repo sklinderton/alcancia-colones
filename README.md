@@ -30,6 +30,7 @@ Cualquier persona que todavía recibe vuelto en efectivo, no solo estudiantes un
 | La app muestra saldo, meta, desglose por denominación y movimientos, como la app de un banco | Consistencia con un modelo mental conocido |
 | Monedas y billetes se reconocen por su forma y su valor en pantalla | Reconocimiento antes que recuerdo |
 | "Hacer retiro" registra lo que se saca y abre la cerradura en un solo paso | Eficiencia y control del usuario |
+| "Empezar sin cuenta" y la alcancía virtual permiten usarla sin GitHub ni Wokwi | Baja barrera de entrada: cualquier persona puede probarla desde su teléfono |
 | La meta se cambia cuando se quiera y el ahorro puede pasarla | Libertad y control del usuario |
 | Gráficos de cuándo se ahorra y cuándo se llegará a la meta | Convertir los datos en información útil para decidir |
 
@@ -148,6 +149,12 @@ La tabla `eventos` de Supabase guarda cada depósito, moneda devuelta, apertura 
 
 Sin `url` en `config.js` la app abre en modo demostración con ocho semanas de datos de ejemplo.
 
+## Alcancía virtual
+
+Para que cualquier persona pueda usarla sin la alcancía física ni Wokwi, la app tiene **Echar dinero**: una pantalla con monedas y billetes grandes que se tocan para depositar. Hace de ESP32 desde el teléfono: guarda el código y la clave del dispositivo solo en ese navegador y envía los depósitos a la misma Edge Function, con el mismo formato. Si no hay internet, los guarda y los reenvía después.
+
+Se entra con **Empezar sin cuenta** (inicio de sesión anónimo de Supabase): la alcancía queda ligada a ese teléfono. Con GitHub se puede abrir desde cualquier lugar.
+
 Además, la carpeta [`alcancia-analisis/`](alcancia-analisis/) tiene un cuaderno de Python que descarga los eventos de Supabase y responde la pregunta del proyecto: *¿cuánto efectivo acumula una persona sin darse cuenta, cuándo lo ahorra y qué tan rápido llega a su meta?* Usa una simulación Monte Carlo para la fecha de la meta y un modelo de aprendizaje automático (Isolation Forest) para detectar movimientos anómalos.
 
 ## Publicar la app
@@ -167,6 +174,8 @@ El plan gratuito de Supabase pausa el proyecto tras una semana sin uso, y mientr
 - La clave pública de `config.js` puede estar en el repositorio: las políticas RLS protegen los datos.
 - El ESP32 no tiene la clave de servicio; usa una clave propia, guardada como hash.
 - Las órdenes de apertura caducan al minuto.
+- La Edge Function acepta llamadas desde el navegador (CORS) porque la autoriza la clave del dispositivo, no una sesión.
+- El inicio sin cuenta tiene un límite de 30 por hora por IP (`config.toml`).
 
 ## Estado actual
 
