@@ -1,21 +1,48 @@
 # Alcancía inteligente de colones
 
-Proyecto del curso Interacción Persona-Máquina. Una alcancía con ESP32 que reconoce cada moneda costarricense con un monedero programable, la guarda y muestra el saldo en el teléfono desde cualquier lugar.
+Proyecto del curso Interacción Persona-Máquina. Una alcancía con ESP32 que reconoce cada moneda y billete costarricense, lo guarda y muestra el saldo en el teléfono desde cualquier lugar, para que el efectivo deje de ser dinero olvidado.
 
 **App:** <https://sklinderton.github.io/alcancia-colones/>
 
-## Problema
+## Justificación desde IPM
 
-Una alcancía normal es una caja negra: no sabes cuánto tienes hasta abrirla y contarla. Eso le quita visibilidad a la meta de ahorro.
+### Problema
 
-## Solución
+El proyecto nace de un problema propio. Cuando pago en efectivo, el vuelto llega en monedas, y esas monedas terminan sueltas en la mesa del cuarto o dentro de una alcancía. En los dos casos pasa lo mismo: **no sé cuánto dinero tengo**.
 
-- **Interacción tangible:** echas una moneda y la alcancía confirma al instante con pantalla, sonido y luz. No hay botones ni pasos previos.
-- **Prevención de errores:** lo que el monedero no reconoce sale por la devolución en lugar de contarse mal.
-- **Visibilidad del estado:** la app muestra saldo, meta y monedas por denominación en vivo.
-- **Análisis de datos:** cada movimiento queda guardado en la nube, y la app lo convierte en gráficos de cómo crece el ahorro, cuándo se llega a la meta y cuándo se ahorra más.
-- **Retiro en un paso:** con **Hacer retiro** eliges qué monedas y billetes sacas; el retiro queda registrado y la cerradura se abre unos segundos para sacarlo.
-- **Meta sin tope:** la meta se puede cambiar cuando quieras y el ahorro puede pasarla (la app muestra, por ejemplo, 135 %).
+Lo único que se puede hacer es levantar la alcancía y sentir que pesa, pero el peso engaña porque no dice qué monedas hay. Con los pesos de las monedas usados en el proyecto, un kilo de monedas de ₡10 son unas 410 monedas, cerca de **₡4100**; un kilo de monedas de ₡500 son unas 95, cerca de **₡47 600**. La misma alcancía "pesada" puede valer casi doce veces más o menos según las monedas que tenga.
+
+### Contexto
+
+Hoy casi todo se paga de forma electrónica, con SINPE Móvil o tarjeta, y en esos pagos el banco muestra el saldo y cada movimiento al instante. El efectivo quedó de lado: se usa menos, incomoda más y, sobre todo, es el único dinero del que **no hay ningún registro**. Las monedas del vuelto se vuelven plata olvidada. La alcancía le da al efectivo la misma visibilidad que ya tiene el dinero digital.
+
+### Usuario objetivo
+
+Cualquier persona que todavía recibe vuelto en efectivo, no solo estudiantes universitarios: personas que trabajan, familias que ahorran en monedas o quien quiera juntar para una meta concreta. No hace falta saber de tecnología: se usa igual que una alcancía normal. El primer usuario es el autor, un estudiante universitario que acumula monedas sin saber cuánto suman.
+
+### Diseño de la interfaz
+
+| Decisión de diseño | Principio de IPM |
+|---|---|
+| Se echa la moneda o el billete como siempre, sin botones ni pasos previos | Interacción tangible: no cambia un hábito que la persona ya tiene |
+| Pantalla, sonido y luz confirman al instante cuánto entró y el total | Retroalimentación inmediata y visibilidad del estado del sistema |
+| Lo que el monedero no reconoce sale por la devolución; si no se puede registrar, los lectores se apagan | Prevención de errores: mejor devolver que contar mal |
+| La app muestra saldo, meta, desglose por denominación y movimientos, como la app de un banco | Consistencia con un modelo mental conocido |
+| Monedas y billetes se reconocen por su forma y su valor en pantalla | Reconocimiento antes que recuerdo |
+| "Hacer retiro" registra lo que se saca y abre la cerradura en un solo paso | Eficiencia y control del usuario |
+| La meta se cambia cuando se quiera y el ahorro puede pasarla | Libertad y control del usuario |
+| Gráficos de cuándo se ahorra y cuándo se llegará a la meta | Convertir los datos en información útil para decidir |
+
+### Ventajas frente a otras soluciones
+
+| Solución | Limitación | Esta alcancía |
+|---|---|---|
+| Dejar las monedas en la mesa | Se pierden y no se sabe cuánto hay | Todo queda guardado y contado |
+| Alcancía tradicional | Hay que romperla o vaciarla para contar | El saldo se ve en el teléfono en todo momento |
+| Pesar la alcancía | El peso no dice el valor | Cuenta cada denominación por separado |
+| Contar a mano | Lento y con errores | Cuenta automáticamente al entrar |
+| Anotar en una app de presupuesto | Depende de acordarse de anotar, y se abandona | El registro es automático |
+| Alcancía contadora con pantalla | Muestra un total, pero sin historial ni acceso remoto | Historial en la nube, acceso desde cualquier lugar y análisis |
 
 Acepta las monedas en circulación (₡10, ₡25, ₡50, ₡100 y ₡500) y los billetes de ₡1000, ₡2000, ₡5000, ₡10 000 y ₡20 000.
 
