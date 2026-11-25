@@ -5,3 +5,6 @@ secretos.h
 .claude/
 **/supabase/.temp/
 **/supabase/.branches/
+
+# Caché de Python
+__pycache__/
