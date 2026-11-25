@@ -76,7 +76,23 @@ def main():
                    "origen": e["origen"], "fuente": fuente(e), "ocurrido_en": e["ocurrido_en"]}
                   for e in eventos],
                  ["usuario", "tipo", "denominacion", "cantidad", "origen", "fuente", "ocurrido_en"])
-    print(f"{len(alcancias)} alcancías y {len(eventos)} eventos guardados en {CARPETA_DATOS}")
+    # Usabilidad: tiempos de las tareas en la app y respuestas del cuestionario SUS
+    interacciones = leer_tabla(url_base, clave, "interacciones",
+                               "alcancia_id,accion,resultado,duracion_ms,ajustes,ocurrido_en", "ocurrido_en")
+    escribir_csv(CARPETA_DATOS / "interacciones.csv",
+                 [{"usuario": alias.get(i["alcancia_id"], "desconocido"), "accion": i["accion"], "resultado": i["resultado"],
+                   "duracion_ms": i["duracion_ms"], "ajustes": i["ajustes"], "ocurrido_en": i["ocurrido_en"]}
+                  for i in interacciones],
+                 ["usuario", "accion", "resultado", "duracion_ms", "ajustes", "ocurrido_en"])
+    encuestas = leer_tabla(url_base, clave, "encuestas", "alcancia_id,respuestas,comentario,creada_en", "creada_en")
+    escribir_csv(CARPETA_DATOS / "encuestas.csv",
+                 [{"usuario": alias.get(e["alcancia_id"], "desconocido"),
+                   **{f"p{n}": r for n, r in enumerate(e["respuestas"], start=1)},
+                   "comentario": e["comentario"] or "", "creada_en": e["creada_en"]}
+                  for e in encuestas],
+                 ["usuario"] + [f"p{n}" for n in range(1, 11)] + ["comentario", "creada_en"])
+    print(f"{len(alcancias)} alcancías, {len(eventos)} eventos, {len(interacciones)} interacciones "
+          f"y {len(encuestas)} encuestas guardadas en {CARPETA_DATOS}")
 
 
 if __name__ == "__main__":

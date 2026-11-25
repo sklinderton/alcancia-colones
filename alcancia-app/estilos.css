@@ -269,3 +269,32 @@ summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; al
 .pasos { margin: 8px 0 12px; padding-left: 22px; font-size: 15px; }
 .pasos li { margin-bottom: 6px; }
 .instalar { border-color: var(--oro); }
+
+/* Cuestionario de opinión (SUS) */
+.pregunta { margin: 0 0 18px; padding: 0; border: 0; }
+.pregunta legend { margin-bottom: 8px; font-weight: 600; font-size: 15px; }
+.escala { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.opcion { position: relative; margin: 0; }
+.opcion input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.opcion span {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  font-weight: 700;
+}
+.opcion input:checked + span { background: var(--marca); border-color: var(--marca); color: var(--sobre-marca); }
+.opcion input:focus-visible + span { outline: 3px solid var(--oro); outline-offset: 2px; }
+.extremos { display: flex; justify-content: space-between; margin-top: 4px; color: var(--tenue); font-size: 12px; }
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--fondo);
+  color: var(--texto);
+  font: inherit;
+}

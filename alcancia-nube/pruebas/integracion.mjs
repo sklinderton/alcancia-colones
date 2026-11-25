@@ -136,6 +136,17 @@ prueba("nadie lee las claves de dispositivos", async () => {
   assert.deepEqual((await dueno.from("dispositivos").select("*")).data ?? [], []);
 });
 
+prueba("el dueño registra interacciones y la encuesta, y nadie más las ve", async () => {
+  const interaccion = { alcancia_id: alcanciaId, accion: "hacer_retiro", resultado: "completada", duracion_ms: 8200, ajustes: 3 };
+  assert.equal((await dueno.from("interacciones").insert(interaccion)).error, null);
+  assert.equal((await dueno.from("encuestas").insert({ alcancia_id: alcanciaId, respuestas: [5, 1, 5, 1, 4, 2, 5, 1, 4, 2] })).error, null);
+  assert.ok((await dueno.from("encuestas").insert({ alcancia_id: alcanciaId, respuestas: [6, 1, 5, 1, 4, 2, 5, 1, 4, 2] })).error, "acepta un 6");
+  assert.ok((await dueno.from("interacciones").insert({ ...interaccion, accion: "otra" })).error, "acepta una acción inventada");
+  const otra = await crearUsuario();
+  assert.ok((await otra.from("interacciones").insert(interaccion)).error, "otra persona escribe en una alcancía ajena");
+  assert.deepEqual((await otra.from("encuestas").select("*").eq("alcancia_id", alcanciaId)).data, []);
+});
+
 let fallos = 0;
 for (const [nombre, fn] of pruebas) {
   try {

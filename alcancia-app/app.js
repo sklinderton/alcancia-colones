@@ -77,6 +77,106 @@ function mostrarLogin(mensaje = "") {
   ].filter((parte) => parte !== null));
 }
 
+// ---------- Usabilidad: medición de tareas ----------
+// Cada tarea empezada en la app guarda si se terminó o se canceló, cuánto tardó
+// y cuántos ajustes necesitó. Responde con datos "¿qué cambiaría en la interfaz?".
+let tareaActual = null;
+
+function empezarTarea(accion, { desdePanel = true } = {}) {
+  tareaActual = { accion, inicio: performance.now(), ajustes: 0, desdePanel };
+}
+
+function contarAjuste() {
+  if (tareaActual) tareaActual.ajustes++;
+}
+
+function terminarTarea(resultado) {
+  if (!tareaActual) return;
+  const { accion, inicio, ajustes, desdePanel } = tareaActual;
+  tareaActual = null;
+  // Volver de "Echar dinero" sin tocar nada después de guardar no es una tarea abandonada
+  if (resultado === "cancelada" && ajustes === 0 && !desdePanel) return;
+  if (modoDemo || !estado.alcancia?.id) return;
+  const duracion = Math.min(3600000, Math.round(performance.now() - inicio));
+  supabase.from("interacciones")
+    .insert({ alcancia_id: estado.alcancia.id, accion, resultado, duracion_ms: duracion, ajustes: Math.min(ajustes, 10000) })
+    .then(({ error }) => error && console.warn("No se guardó la interacción", error.message));
+}
+
+// ---------- Usabilidad: cuestionario SUS ----------
+// Escala de usabilidad del sistema (SUS), 10 afirmaciones de 1 a 5
+const AFIRMACIONES_SUS = [
+  "Creo que me gustaría usar esta alcancía con frecuencia.",
+  "La encontré innecesariamente complicada.",
+  "Me pareció fácil de usar.",
+  "Creo que necesitaría ayuda de alguien con conocimientos técnicos para usarla.",
+  "Las distintas partes de la app funcionan bien juntas.",
+  "Encontré demasiadas cosas que no concuerdan entre sí.",
+  "Imagino que la mayoría de la gente aprendería a usarla muy rápido.",
+  "Me resultó muy incómoda de usar.",
+  "Me sentí con confianza al usarla.",
+  "Necesité aprender muchas cosas antes de poder usarla.",
+];
+const claveEncuesta = (id) => `alcancia-encuesta:${id}`;
+
+function tarjetaOpinion() {
+  if (leerLocal(claveEncuesta(estado.alcancia.id), false)) {
+    return elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Tu opinión"),
+      elemento("p", { class: "ayuda" }, "¡Gracias! Ya respondiste el cuestionario."));
+  }
+  return elemento("section", { class: "tarjeta instalar" },
+    elemento("h2", {}, "¿Qué te parece la alcancía?"),
+    elemento("p", { class: "ayuda" }, "Son 10 preguntas cortas, unos 2 minutos. Tu opinión ayuda a mejorarla."),
+    elemento("div", { class: "columna" }, elemento("button", { class: "secundario", onclick: mostrarEncuesta }, "Dar mi opinión")));
+}
+
+function mostrarEncuesta() {
+  estado.vista = "encuesta";
+  const error = elemento("p", { class: "error", role: "alert" });
+  const comentario = elemento("textarea", { name: "comentario", maxLength: 1000, rows: 3,
+    placeholder: "¿Algo te confundió o te gustaría que cambiara? (opcional)" });
+  const preguntas = AFIRMACIONES_SUS.map((texto, i) => elemento("fieldset", { class: "pregunta" },
+    elemento("legend", {}, `${i + 1}. ${texto}`),
+    elemento("div", { class: "escala" }, ...[1, 2, 3, 4, 5].map((valor) => elemento("label", { class: "opcion" },
+      elemento("input", { type: "radio", name: `p${i}`, value: valor, required: true }),
+      elemento("span", {}, String(valor))))),
+    elemento("div", { class: "extremos" }, elemento("span", {}, "Nada de acuerdo"), elemento("span", {}, "Muy de acuerdo"))));
+
+  const enviar = async (evento) => {
+    evento.preventDefault();
+    const datos = new FormData(evento.target);
+    const respuestas = AFIRMACIONES_SUS.map((_, i) => Number(datos.get(`p${i}`)));
+    if (respuestas.some((r) => !r)) {
+      error.textContent = "Responde las 10 preguntas.";
+      return;
+    }
+    if (!modoDemo) {
+      const { error: fallo } = await supabase.from("encuestas")
+        .insert({ alcancia_id: estado.alcancia.id, respuestas, comentario: comentario.value.trim() || null });
+      if (fallo) {
+        error.textContent = "No se pudo enviar. Revisa tu conexión e intenta de nuevo.";
+        return;
+      }
+    }
+    guardarLocal(claveEncuesta(estado.alcancia.id), true);
+    estado.aviso = "¡Gracias por tu opinión!";
+    volverAlPanel();
+  };
+
+  raiz.replaceChildren(
+    elemento("header", { class: "encabezado" },
+      elemento("div", {}, elemento("h1", {}, "Tu opinión"), elemento("div", { class: "estado" }, "10 preguntas")),
+      elemento("button", { class: "enlace", onclick: volverAlPanel }, "Volver")),
+    elemento("form", { class: "tarjeta", onsubmit: enviar },
+      elemento("p", { class: "ayuda" }, "Marca qué tan de acuerdo estás con cada frase. No hay respuestas correctas."),
+      ...preguntas,
+      elemento("label", {}, "Comentarios", comentario),
+      error,
+      elemento("div", { class: "columna" }, elemento("button", { type: "submit" }, "Enviar"))));
+  scrollTo(0, 0);
+}
+
 // ---------- Instalar como app ----------
 // Chrome y Edge en Android avisan que se puede instalar; en iPhone hay que hacerlo desde Safari.
 let avisoInstalacion = null;
@@ -214,6 +314,8 @@ async function guardarVirtual() {
   const eventos = DENOMINACIONES.flatMap((valor) => Array.from({ length: virtual.carrito[valor] ?? 0 }, () => (
     { id: `virtual-${crypto.randomUUID()}`, tipo: "deposito", denominacion: valor, ocurrido_en: ahora })));
   sonidoDeposito();
+  terminarTarea("completada");
+  empezarTarea("echar_dinero", { desdePanel: false });  // Puede seguir guardando sin volver al panel
   virtual.carrito = {};
   virtual.ultimo = `+${colones(monto)}`;
   if (modoDemo) {
@@ -315,6 +417,7 @@ function mostrarAlcanciaVirtual() {
     });
     const fijar = (cantidad) => {
       const limpia = Math.min(MAXIMO_POR_DENOMINACION, Math.max(0, Math.floor(Number(cantidad) || 0)));
+      if (limpia !== (virtual.carrito[valor] ?? 0)) contarAjuste();
       virtual.carrito[valor] = limpia;
       if (String(limpia) !== campo.value) campo.value = String(limpia);
       refrescar();
@@ -345,7 +448,13 @@ const encabezadoVirtual = () => elemento("header", { class: "encabezado" },
     elemento("div", { class: "estado" }, "Alcancía virtual")),
   elemento("button", { class: "enlace", onclick: volverAlPanel }, "Volver"));
 
+function abrirEcharDinero() {
+  empezarTarea("echar_dinero");
+  mostrarAlcanciaVirtual();
+}
+
 function volverAlPanel() {
+  if (estado.vista === "virtual") terminarTarea("cancelada");
   estado.vista = "panel";
   virtual.carrito = {};
   virtual.ultimo = "";
@@ -479,7 +588,7 @@ function mostrarPanel() {
         elemento("span", {}, `Meta ${colones(meta)} `,
           elemento("button", { class: "enlace", onclick: abrirMeta }, "Cambiar")))),
     elemento("div", { class: "acciones" },
-      elemento("button", { onclick: mostrarAlcanciaVirtual }, "Echar dinero"),
+      elemento("button", { onclick: abrirEcharDinero }, "Echar dinero"),
       elemento("button", { class: "secundario", onclick: abrirRetiro, disabled: total() === 0 }, "Hacer retiro")),
     tarjetaInstalacion(),
     elemento("section", { class: "tarjeta" },
@@ -489,6 +598,7 @@ function mostrarPanel() {
       elemento("h2", {}, "Monedas"),
       ...MONEDAS.map(filaDenominacion)),
     ...seccionesAnalisis(),
+    modoDemo ? null : tarjetaOpinion(),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Actividad reciente"),
       ...(estado.eventos.length === 0
@@ -512,6 +622,7 @@ function aplicarEvento(evento) {
 
 // Redibuja la pantalla en la que está la persona sin sacarla de ella
 function dibujarVista() {
+  if (estado.vista === "encuesta") return;
   if (estado.vista === "virtual") mostrarAlcanciaVirtual();
   else mostrarPanel();
 }
@@ -536,6 +647,7 @@ function abrirMeta() {
   const campo = document.getElementById("nueva-meta");
   campo.value = estado.alcancia.meta_colones;
   document.getElementById("error-meta").textContent = "";
+  empezarTarea("cambiar_meta");
   dialogoMeta.showModal();
 }
 
@@ -554,6 +666,7 @@ async function guardarMeta(evento) {
     }
   }
   estado.alcancia.meta_colones = nueva;
+  terminarTarea("completada");
   dialogoMeta.close();
   mostrarPanel();
 }
@@ -562,6 +675,7 @@ function dibujarRetiro() {
   const filas = DENOMINACIONES.filter((valor) => estado.conteo[valor] > 0).map((valor) => {
     const cambiar = (delta) => {
       const nuevo = Math.min(estado.conteo[valor], Math.max(0, (estado.retiro[valor] ?? 0) + delta));
+      if (nuevo !== (estado.retiro[valor] ?? 0)) contarAjuste();
       estado.retiro[valor] = nuevo;
       dibujarRetiro();
     };
@@ -584,6 +698,7 @@ function abrirRetiro() {
   estado.retiro = {};
   document.getElementById("error-retiro").textContent = "";
   dibujarRetiro();
+  empezarTarea("hacer_retiro");
   dialogoRetiro.showModal();
 }
 
@@ -608,6 +723,7 @@ async function confirmarRetiro(evento) {
       return;
     }
   }
+  terminarTarea("completada");
   dialogoRetiro.close();
   filas.forEach(aplicarEvento);
   // Un solo paso: el retiro queda registrado y la alcancía se abre para sacarlo
@@ -738,6 +854,9 @@ document.getElementById("formulario-retiro").addEventListener("submit", confirma
 document.getElementById("cancelar-retiro").addEventListener("click", () => dialogoRetiro.close());
 document.getElementById("formulario-meta").addEventListener("submit", guardarMeta);
 document.getElementById("cancelar-meta").addEventListener("click", () => dialogoMeta.close());
+dialogoRetiro.addEventListener("close", () => tareaActual?.accion === "hacer_retiro" && terminarTarea("cancelada"));
+dialogoMeta.addEventListener("close", () => tareaActual?.accion === "cambiar_meta" && terminarTarea("cancelada"));
+document.getElementById("nueva-meta").addEventListener("input", contarAjuste);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 

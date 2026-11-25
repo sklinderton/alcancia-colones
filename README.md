@@ -50,23 +50,44 @@ Acepta las monedas en circulación (₡10, ₡25, ₡50, ₡100 y ₡500) y los 
 ## Arquitectura
 
 ```mermaid
-flowchart LR
-    U[Persona] -->|echa moneda| S[Monedero CH-926]
-    S -->|pulsos| E[ESP32]
-    E -->|pantalla, sonido y relé| U
-    E -->|HTTPS con clave de dispositivo| F[Edge Function]
-    F --> D[(Supabase Postgres)]
-    D -->|Realtime| A[App web]
-    A -->|inicio con GitHub y órdenes| D
-    U --> A
-    D --> P[Análisis de datos]
+flowchart TB
+    U([Persona])
+    subgraph Dispositivo
+        direction LR
+        L[Monedero y<br/>lector de billetes] -->|pulsos| E[ESP32<br/>pantalla · sonido · cerradura]
+        V[Alcancía virtual<br/>en el teléfono]
+    end
+    subgraph Nube["Nube · Supabase"]
+        direction LR
+        F[Edge Function<br/>dispositivo] -->|guarda| D[(Postgres<br/>eventos · interacciones · encuestas)]
+        D --> R[Realtime]
+    end
+    A[App web<br/>saldo · retiros · meta · opinión]
+    P[Cuaderno de Python<br/>Monte Carlo · Isolation Forest · SUS]
+    U -->|echa dinero| L
+    U -->|indica cuánto guarda| V
+    U <-->|usa| A
+    E -->|HTTPS + clave| F
+    V -->|HTTPS + clave| F
+    F -.->|saldo y orden de abrir| E
+    R -->|saldo en vivo| A
+    A -->|retiros, tiempos, SUS| D
+    D -->|CSV anónimo| P
 ```
 
-1. El monedero reconoce la moneda, la deja caer a la alcancía y envía una cantidad de pulsos según su valor. El ESP32 cuenta los pulsos y sabe cuál moneda fue.
+| Pieza | Comunicación | Almacenamiento |
+|---|---|---|
+| ESP32 o alcancía virtual | HTTPS a la Edge Function, con la clave del dispositivo; cola local con reintentos | Cola en memoria (ESP32) o en el navegador (virtual) |
+| Edge Function `dispositivo` | Valida la clave, guarda los eventos y responde saldo y órdenes | — |
+| Postgres | Políticas RLS: cada alcancía solo la ve su propietario | Tablas `eventos`, `interacciones`, `encuestas`, `alcancias`, `dispositivos`, `comandos` |
+| App web | API de Supabase con la sesión del usuario y Realtime para ver el saldo en vivo | Sesión y alcancía virtual en el navegador |
+| Análisis | `descargar_eventos.py` baja las tablas sin nombres ni ids | CSV en `alcancia-analisis/datos/` |
+
+1. El monedero o el lector de billetes reconoce lo que entra y envía pulsos; el ESP32 los cuenta y sabe qué fue. Sin la alcancía física, la alcancía virtual de la app hace lo mismo desde el teléfono.
 2. El evento entra a una cola local y se envía a la Edge Function `dispositivo`. Si no hay internet, se reintenta; el id de cada evento evita duplicados.
 3. Postgres guarda el evento y calcula el saldo. Las políticas RLS limitan cada alcancía a su propietario.
-4. La app recibe el cambio en vivo. Sus órdenes, como abrir, llegan al ESP32 en la siguiente sincronización.
-5. La app analiza el historial de eventos (ver abajo).
+4. La app recibe el cambio en vivo. Sus órdenes, como abrir, llegan al ESP32 en la siguiente sincronización. También guarda cuánto tarda la persona en cada tarea y sus respuestas al cuestionario SUS.
+5. El cuaderno de Python descarga las tablas y responde la pregunta del proyecto (ver "Análisis de datos").
 
 ## Estructura
 
