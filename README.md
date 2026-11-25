@@ -14,9 +14,10 @@ Una alcancía normal es una caja negra: no sabes cuánto tienes hasta abrirla y 
 - **Prevención de errores:** lo que el monedero no reconoce sale por la devolución en lugar de contarse mal.
 - **Visibilidad del estado:** la app muestra saldo, meta y monedas por denominación en vivo.
 - **Análisis de datos:** cada movimiento queda guardado en la nube, y la app lo convierte en gráficos de cómo crece el ahorro, cuándo se llega a la meta y cuándo se ahorra más.
-- **Control de retiros:** la cerradura se abre desde la app y el retiro se registra para que el saldo siga siendo correcto.
+- **Retiro en un paso:** con **Hacer retiro** eliges qué monedas y billetes sacas; el retiro queda registrado y la cerradura se abre unos segundos para sacarlo.
+- **Meta sin tope:** la meta se puede cambiar cuando quieras y el ahorro puede pasarla (la app muestra, por ejemplo, 135 %).
 
-Acepta las monedas en circulación: ₡10, ₡25, ₡50, ₡100 y ₡500.
+Acepta las monedas en circulación (₡10, ₡25, ₡50, ₡100 y ₡500) y los billetes de ₡1000, ₡2000, ₡5000, ₡10 000 y ₡20 000.
 
 ## Arquitectura
 
@@ -51,11 +52,15 @@ flowchart LR
 
 Crea un proyecto ESP32 en [Wokwi](https://wokwi.com/projects/new/esp32) y copia `sketch.ino`, `diagram.json` y `libraries.txt`.
 
-Wokwi no tiene monedero, así que el ESP32 hace de monedero: cada botón de moneda genera en el GPIO 17 los mismos pulsos que enviaría el CH-926, y un cable los lleva al GPIO 16. Así se prueba el mismo código que cuenta los pulsos en el hardware real. En el circuito:
+Wokwi no tiene monedero ni lector de billetes, así que el ESP32 hace de los dos: cada botón genera los mismos pulsos que enviaría el lector real, y un cable los lleva de vuelta a la entrada que los cuenta. Así se prueba el mismo código que en el hardware real. En el circuito:
 
-- El LED amarillo **Pulsos** parpadea con cada pulso: 1 para ₡10, 2 para ₡25, 3 para ₡50, 4 para ₡100 y 5 para ₡500.
+- Botones de **moneda**: pulsos del GPIO 17 al GPIO 16. El LED amarillo **Pulsos monedas** parpadea 1 vez para ₡10, 2 para ₡25, 3 para ₡50, 4 para ₡100 y 5 para ₡500.
+- Botones azules de **billete**: pulsos del GPIO 2 al GPIO 39, 1 por cada ₡1000. El LED azul **Pulsos billetes** parpadea 1 vez para ₡1000 y 20 para ₡20 000.
 - El botón **Moneda devuelta** representa el sensor IR de la salida de rechazo.
-- El LED blanco **Monedero 12 V** muestra el relé que alimenta el monedero. Se apaga si la cola de eventos se llena sin internet, y entonces las monedas salen por la devolución.
+- El LED blanco **Lectores 12 V** muestra el relé que alimenta el monedero y el lector de billetes. Se apaga si la cola de eventos se llena sin internet, y entonces lo que entra sale por la devolución.
+- La cerradura (LED naranja) se abre desde la app con **Hacer retiro**.
+
+Echa una moneda o un billete a la vez y espera a que se apague el LED verde.
 
 El dispositivo final no tiene esos botones.
 
@@ -76,6 +81,12 @@ El peso y la densidad de una misma moneda cambian según el año de acuñación,
 - Configura los pulsos en modo medio (50 ms) y la salida en NO.
 - Revisa que el diámetro de la ₡500 quepa en el rango del monedero.
 
+## Lector de billetes
+
+Los billetes entran por un lector (validador) de billetes con salida de pulsos, configurado para enviar 1 pulso por cada ₡1000: 1 para ₡1000, 2 para ₡2000, 5 para ₡5000, 10 para ₡10 000 y 20 para ₡20 000. El firmware los cuenta en una línea aparte de la del monedero.
+
+El lector tiene que reconocer colones. Los lectores genéricos traen otras monedas de fábrica y algunos permiten cargar o entrenar billetes nuevos; hay que confirmarlo con el modelo que se consiga. Mientras tanto, los billetes se prueban en Wokwi.
+
 ## Configurar el dispositivo real
 
 Copia `alcancia-wokwi/secretos.ejemplo.h` como `secretos.h` y complétalo. Ese archivo está excluido del repositorio. En `sketch.ino` cambia `MODO_SIMULACION` a `false`.
@@ -83,9 +94,10 @@ Copia `alcancia-wokwi/secretos.ejemplo.h` como `secretos.h` y complétalo. Ese a
 | Componente | Conexión |
 |---|---|
 | Monedero programable CH-926 (6 monedas, 12 V) | Salida COIN → optoacoplador PC817 → GPIO 16 |
-| Fuente de 12 V, 2 A | Monedero y cerradura |
+| Lector de billetes con salida de pulsos (12 V) | Salida de pulsos → optoacoplador PC817 → GPIO 39 |
+| Fuente de 12 V, 3 A | Monedero, lector de billetes y cerradura |
 | Convertidor reductor de 12 V a 5 V (LM2596 o MP1584) | Alimenta el ESP32 |
-| Módulo de relé de 2 canales | Canal 1: cerradura (GPIO 23). Canal 2: alimentación del monedero (GPIO 18) |
+| Módulo de relé de 2 canales | Canal 1: cerradura (GPIO 23). Canal 2: alimentación del monedero y del lector de billetes (GPIO 18) |
 | Cerradura solenoide de 12 V | Relé canal 1 |
 | Sensor IR FC-51 en la salida de rechazo | GPIO 34 |
 | Pantalla OLED SSD1306 | SDA GPIO 21, SCL GPIO 22 |
@@ -128,7 +140,7 @@ El plan gratuito de Supabase pausa el proyecto tras una semana sin uso, y mientr
 
 ## Estado actual
 
-- Probado: las 12 pruebas de la nube y una moneda enviada desde Wokwi hasta Supabase.
+- Probado: las 13 pruebas de la nube (incluidos los billetes) y monedas enviadas desde Wokwi hasta Supabase.
 - Firmware con monedero: probado en Wokwi. Las 5 monedas generan sus pulsos (1 a 5) y se registran bien, igual que la moneda devuelta y la apertura. Falta probarlo con un CH-926 real.
 - Riesgo a medir con el monedero real: si dos monedas entran con menos de 300 ms entre sus pulsos, el ESP32 las suma como una sola (por ejemplo, ₡10 y ₡100 darían 5 pulsos, que es ₡500).
 - Sin probar: el entrenamiento del monedero con monedas de distintos años y el sensor IR de la devolución.

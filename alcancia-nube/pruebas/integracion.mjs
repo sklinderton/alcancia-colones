@@ -54,6 +54,7 @@ prueba("rechaza una clave incorrecta", async () => {
 
 prueba("rechaza denominaciones que no circulan", async () => {
   assert.equal((await enviar(codigo, clave, [deposito(5, 1)])).status, 400);
+  assert.equal((await enviar(codigo, clave, [deposito(3000)])).status, 400);
 });
 
 prueba("guarda depósitos y devuelve el conteo", async () => {
@@ -93,7 +94,21 @@ prueba("no se puede retirar más de lo que hay", async () => {
   const { error } = await dueno.from("eventos").insert({
     id: randomUUID(), alcancia_id: alcanciaId, tipo: "retiro", origen: "app", denominacion: 500, cantidad: 2,
   });
-  assert.match(error?.message ?? "", /Solo hay 1 monedas/);
+  assert.match(error?.message ?? "", /Solo hay 1 de 500 colones/);
+});
+
+prueba("acepta billetes y se pueden retirar", async () => {
+  const respuesta = await enviar(codigo, clave, [deposito(1000), deposito(20000)]);
+  assert.equal(respuesta.status, 200);
+  const { conteo } = await respuesta.json();
+  assert.equal(conteo[1000], 1);
+  assert.equal(conteo[20000], 1);
+  const { error } = await dueno.from("eventos").insert({
+    id: randomUUID(), alcancia_id: alcanciaId, tipo: "retiro", origen: "app", denominacion: 20000, cantidad: 1,
+  });
+  assert.equal(error, null);
+  const { data } = await dueno.from("saldo_por_denominacion").select("cantidad").eq("alcancia_id", alcanciaId).eq("denominacion", 20000);
+  assert.equal(data[0].cantidad, 0);
 });
 
 prueba("la app no puede inventar depósitos", async () => {

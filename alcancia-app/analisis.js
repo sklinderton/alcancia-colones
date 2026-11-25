@@ -152,7 +152,7 @@ function graficoAhorro({ serie, fechaMeta, saldo }, meta, formato) {
   return svg;
 }
 
-// Monedas depositadas por día de la semana; solo la barra mayor lleva su número
+// Depósitos (monedas y billetes) por día de la semana; solo la barra mayor lleva su número
 function graficoSemana(porDia) {
   const ancho = 440, alto = 150;
   const margen = { arriba: 20, abajo: 24, lados: 8 };
@@ -163,7 +163,7 @@ function graficoSemana(porDia) {
   const mayor = porDia.indexOf(Math.max(...porDia));
 
   const svg = trazo("svg", { viewBox: `0 0 ${ancho} ${alto}`, class: "grafico", role: "img",
-    "aria-label": `Monedas depositadas por día de la semana. Más depósitos el ${NOMBRES_DIA[mayor]}.` });
+    "aria-label": `Depósitos por día de la semana. Más depósitos el ${NOMBRES_DIA[mayor]}.` });
   svg.append(trazo("line", { x1: margen.lados, x2: ancho - margen.lados, y1: alto - margen.abajo, y2: alto - margen.abajo, class: "base" }));
 
   porDia.forEach((cantidad, i) => {
@@ -177,7 +177,7 @@ function graficoSemana(porDia) {
       svg.append(trazo("path", {
         d: `M${izq},${base} V${arriba + r} Q${izq},${arriba} ${izq + r},${arriba} H${der - r} Q${der},${arriba} ${der},${arriba + r} V${base} Z`,
         class: i === mayor ? "barra" : "barra tenue",
-      }, titulo(`${NOMBRES_DIA[i]}: ${cantidad} ${cantidad === 1 ? "moneda" : "monedas"}`)));
+      }, titulo(`${NOMBRES_DIA[i]}: ${cantidad} ${cantidad === 1 ? "depósito" : "depósitos"}`)));
     }
     if (i === mayor && cantidad > 0) {
       svg.append(trazo("text", { x: centro, y: base - h - 6, "text-anchor": "middle", class: "valor" }, String(cantidad)));

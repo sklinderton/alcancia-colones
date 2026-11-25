@@ -1,5 +1,7 @@
 // App web instalable de la alcancía. Sin url en config.js abre en modo demostración.
-const DENOMINACIONES = [500, 100, 50, 25, 10];
+const BILLETES = [20000, 10000, 5000, 2000, 1000];
+const MONEDAS = [500, 100, 50, 25, 10];
+const DENOMINACIONES = [...BILLETES, ...MONEDAS];
 const TEXTO_EVENTO = { deposito: "Depósito", retiro: "Retiro", rechazo: "Moneda devuelta", apertura: "Alcancía abierta" };
 
 const { url, anonKey } = window.ALCANCIA_CONFIG;
@@ -20,7 +22,14 @@ const estado = {
 let canal = null;
 
 const colones = (monto) => `₡${monto.toLocaleString("de-DE")}`;
-const textoMonedas = (cantidad) => `${cantidad} ${cantidad === 1 ? "moneda" : "monedas"}`;
+const esBillete = (valor) => valor >= 1000;
+const textoCantidad = (valor, cantidad) => {
+  const nombre = esBillete(valor) ? "billete" : "moneda";
+  return `${cantidad} ${cantidad === 1 ? nombre : nombre + "s"}`;
+};
+const ficha = (valor) => elemento("span", { class: esBillete(valor) ? "ficha billete" : "ficha" },
+  esBillete(valor) ? `${valor / 1000} mil` : String(valor));
+const dialogoMeta = document.getElementById("dialogo-meta");
 const total = () => DENOMINACIONES.reduce((suma, valor) => suma + valor * estado.conteo[valor], 0);
 
 function elemento(etiqueta, atributos = {}, ...hijos) {
@@ -116,7 +125,7 @@ function seccionesAnalisis() {
 
   let proyeccion = "Sin ahorro en las últimas 4 semanas todavía no se puede estimar cuándo llegarás a la meta.";
   if (analisis.saldo >= meta) {
-    proyeccion = "¡Llegaste a la meta!";
+    proyeccion = `¡Superaste la meta por ${colones(analisis.saldo - meta)}! Puedes subirla con "Cambiar meta".`;
   } else if (analisis.fechaMeta) {
     const semanal = Math.round(analisis.ritmoDiario * 7);
     proyeccion = `Al ritmo de ${colones(semanal)} por semana, llegarás a la meta cerca del ${fechaLarga(analisis.fechaMeta)}.`;
@@ -153,14 +162,18 @@ function seccionesAnalisis() {
     secciones.push(elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Monedas devueltas"),
       elemento("div", { class: "fila" },
-        elemento("span", {}, `${analisis.devueltas} de ${analisis.aceptadas + analisis.devueltas} monedas`),
+        elemento("span", {}, `${analisis.devueltas} de ${analisis.aceptadas + analisis.devueltas} intentos`),
         elemento("span", { class: "detalle" }, porcentaje(analisis.tasaDevueltas))),
       elemento("p", { class: "ayuda" }, revisar
         ? "Más del 5 % vuelve a salir: conviene entrenar el monedero con más monedas de distintos años."
-        : "El monedero reconoce bien las monedas. Si pasa del 5 %, conviene volver a entrenarlo.")));
+        : "La alcancía reconoce bien lo que entra. Si pasa del 5 %, conviene volver a entrenar el monedero.")));
   }
   return secciones;
 }
+
+const filaDenominacion = (valor) => elemento("div", { class: "fila" },
+  elemento("span", { class: "moneda" }, ficha(valor), textoCantidad(valor, estado.conteo[valor])),
+  elemento("span", { class: "detalle" }, colones(valor * estado.conteo[valor])));
 
 function mostrarPanel() {
   const meta = estado.alcancia.meta_colones;
@@ -177,21 +190,25 @@ function mostrarPanel() {
       elemento("div", { class: "total" }, colones(total())),
       elemento("progress", { max: meta, value: Math.min(total(), meta), "aria-label": "Avance hacia la meta" }),
       elemento("div", { class: "meta" },
-        elemento("span", {}, `${Math.min(100, Math.floor((total() / meta) * 100))} % de la meta`),
-        elemento("span", {}, colones(meta)))),
-    elemento("div", { class: "acciones" },
-      elemento("button", { onclick: pedirApertura }, "Abrir"),
-      elemento("button", { class: "secundario", onclick: abrirRetiro, disabled: total() === 0 }, "Registrar retiro")),
+        // Sin tope: el ahorro puede pasar del 100 % de la meta
+        elemento("span", {}, total() >= meta
+          ? `${Math.floor((total() / meta) * 100)} % · meta superada`
+          : `${Math.floor((total() / meta) * 100)} % de la meta`),
+        elemento("span", {}, `Meta ${colones(meta)} `,
+          elemento("button", { class: "enlace", onclick: abrirMeta }, "Cambiar")))),
+    elemento("div", { class: "acciones una" },
+      elemento("button", { onclick: abrirRetiro, disabled: total() === 0 }, "Hacer retiro")),
+    elemento("section", { class: "tarjeta" },
+      elemento("h2", {}, "Billetes"),
+      ...BILLETES.map(filaDenominacion)),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Monedas"),
-      ...DENOMINACIONES.map((valor) => elemento("div", { class: "fila" },
-        elemento("span", { class: "moneda" }, elemento("span", { class: "ficha" }, String(valor)), textoMonedas(estado.conteo[valor])),
-        elemento("span", { class: "detalle" }, colones(valor * estado.conteo[valor]))))),
+      ...MONEDAS.map(filaDenominacion)),
     ...seccionesAnalisis(),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Actividad reciente"),
       ...(estado.eventos.length === 0
-        ? [elemento("p", { class: "ayuda" }, "Echa tu primera moneda y aparecerá aquí.")]
+        ? [elemento("p", { class: "ayuda" }, "Echa tu primera moneda o billete y aparecerá aquí.")]
         : estado.eventos.slice(0, 10).map((evento) => elemento("div", { class: "fila" },
             elemento("span", {}, textoEvento(evento)),
             elemento("span", { class: "detalle" }, fechaCorta(evento.ocurrido_en)))))),
@@ -204,18 +221,44 @@ function aplicarEvento(evento) {
   if (evento.tipo === "deposito") estado.conteo[evento.denominacion] += evento.cantidad;
   if (evento.tipo === "retiro") estado.conteo[evento.denominacion] -= evento.cantidad;
   if (evento.tipo === "apertura") {
-    estado.aviso = "La alcancía se abrió. Si sacas monedas, registra el retiro.";
+    estado.aviso = "La alcancía se abrió: saca lo que registraste.";
   }
   mostrarPanel();
 }
 
+// La orden de abrir llega al ESP32 en la siguiente sincronización
 async function pedirApertura() {
   if (modoDemo) {
     aplicarEvento({ id: crypto.randomUUID(), tipo: "apertura", cantidad: 1, ocurrido_en: new Date().toISOString() });
-    return;
+    return true;
   }
   const { error } = await supabase.from("comandos").insert({ alcancia_id: estado.alcancia.id });
-  estado.aviso = error ? "No se pudo enviar la orden." : "Orden enviada. Se abrirá en unos 10 segundos.";
+  return !error;
+}
+
+function abrirMeta() {
+  const campo = document.getElementById("nueva-meta");
+  campo.value = estado.alcancia.meta_colones;
+  document.getElementById("error-meta").textContent = "";
+  dialogoMeta.showModal();
+}
+
+async function guardarMeta(evento) {
+  evento.preventDefault();
+  const nueva = Number(document.getElementById("nueva-meta").value);
+  if (!Number.isInteger(nueva) || nueva <= 0) {
+    document.getElementById("error-meta").textContent = "Escribe una meta en colones mayor que cero.";
+    return;
+  }
+  if (!modoDemo) {
+    const { error } = await supabase.from("alcancias").update({ meta_colones: nueva }).eq("id", estado.alcancia.id);
+    if (error) {
+      document.getElementById("error-meta").textContent = "No se pudo guardar la meta.";
+      return;
+    }
+  }
+  estado.alcancia.meta_colones = nueva;
+  dialogoMeta.close();
   mostrarPanel();
 }
 
@@ -227,16 +270,17 @@ function dibujarRetiro() {
       dibujarRetiro();
     };
     return elemento("div", { class: "fila" },
-      elemento("span", { class: "moneda" }, elemento("span", { class: "ficha" }, String(valor))),
+      elemento("span", { class: "moneda" }, ficha(valor),
+        elemento("span", { class: "detalle" }, `hay ${estado.conteo[valor]}`)),
       elemento("span", { class: "contador" },
-        elemento("button", { type: "button", class: "secundario", "aria-label": `Quitar una de ${valor}`, onclick: () => cambiar(-1) }, "−"),
+        elemento("button", { type: "button", class: "secundario", "aria-label": `Quitar uno de ${valor}`, onclick: () => cambiar(-1) }, "−"),
         elemento("output", {}, String(estado.retiro[valor] ?? 0)),
-        elemento("button", { type: "button", class: "secundario", "aria-label": `Agregar una de ${valor}`, onclick: () => cambiar(1) }, "+")));
+        elemento("button", { type: "button", class: "secundario", "aria-label": `Agregar uno de ${valor}`, onclick: () => cambiar(1) }, "+")));
   });
   document.getElementById("lista-retiro").replaceChildren(...filas);
   const monto = DENOMINACIONES.reduce((suma, valor) => suma + valor * (estado.retiro[valor] ?? 0), 0);
   const confirmar = document.getElementById("confirmar-retiro");
-  confirmar.textContent = monto ? `Registrar ${colones(monto)}` : "Registrar retiro";
+  confirmar.textContent = monto ? `Retirar ${colones(monto)}` : "Retirar";
   confirmar.disabled = monto === 0;
 }
 
@@ -269,8 +313,15 @@ async function confirmarRetiro(evento) {
     }
   }
   dialogoRetiro.close();
-  estado.aviso = "";
   filas.forEach(aplicarEvento);
+  // Un solo paso: el retiro queda registrado y la alcancía se abre para sacarlo
+  const ordenEnviada = await pedirApertura();
+  if (!modoDemo) {
+    estado.aviso = ordenEnviada
+      ? "Retiro registrado. La alcancía se abrirá en unos 10 segundos."
+      : "Retiro registrado, pero no se pudo enviar la orden de abrir. Revisa tu conexión.";
+  }
+  mostrarPanel();
 }
 
 function escucharEventos() {
@@ -293,9 +344,10 @@ function escucharEventos() {
 function eventosDemo(ahora = new Date()) {
   let semilla = 7;
   const azar = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
-  const frecuencia = [[10, 3], [25, 2], [50, 3], [100, 4], [500, 1]];
+  const frecuencia = [[10, 3], [25, 2], [50, 3], [100, 4], [500, 1], [1000, 0.6], [2000, 0.3], [5000, 0.1]];
+  const pesoTotal = frecuencia.reduce((suma, [, peso]) => suma + peso, 0);
   const elegirMoneda = () => {
-    let resto = azar() * 13;
+    let resto = azar() * pesoTotal;
     for (const [valor, peso] of frecuencia) {
       resto -= peso;
       if (resto < 0) return valor;
@@ -337,7 +389,7 @@ function eventosDemo(ahora = new Date()) {
 
 function cargarDemo() {
   const { eventos, conteo } = eventosDemo();
-  estado.alcancia = { nombre: "Alcancía de ejemplo", meta_colones: 10000 };
+  estado.alcancia = { nombre: "Alcancía de ejemplo", meta_colones: 50000 };
   estado.conteo = conteo;
   estado.eventos = eventos;
   mostrarPanel();
@@ -381,6 +433,8 @@ async function iniciar() {
 
 document.getElementById("formulario-retiro").addEventListener("submit", confirmarRetiro);
 document.getElementById("cancelar-retiro").addEventListener("click", () => dialogoRetiro.close());
+document.getElementById("formulario-meta").addEventListener("submit", guardarMeta);
+document.getElementById("cancelar-meta").addEventListener("click", () => dialogoMeta.close());
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 

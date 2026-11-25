@@ -2,7 +2,8 @@
 // órdenes pendientes. El dispositivo nunca recibe la clave de servicio.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const DENOMINACIONES = [10, 25, 50, 100, 500];
+// Monedas del monedero y billetes del lector de billetes
+const DENOMINACIONES = [10, 25, 50, 100, 500, 1000, 2000, 5000, 10000, 20000];
 const TIPOS_DISPOSITIVO = ["deposito", "rechazo", "apertura"];
 const MAX_EVENTOS = 20;
 const VIGENCIA_ORDEN_MS = 60_000; // Una orden vieja no debe abrir la alcancía
