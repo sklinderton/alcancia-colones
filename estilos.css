@@ -242,18 +242,30 @@ dialog .acciones { margin: 8px 0 0; }
 .pantalla-virtual .ultimo { font-size: 40px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .pantalla-virtual .detalle-pantalla { margin-top: 6px; font-size: 14px; color: #b8f5cc; }
 
-.rejilla-billetes { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
-.rejilla-monedas { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 12px; margin-top: 10px; justify-items: center; }
-
-button.echar {
-  border: 2px solid var(--oro);
-  background: var(--marca-suave);
-  color: var(--texto);
+/* Cantidad editable: se puede tocar − y + o escribir el número */
+.contador input {
+  width: 64px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 4px;
+  text-align: center;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-button.echar:active { transform: scale(0.95); }
-button.echar.billete { min-height: 64px; border-radius: 8px; font-size: 18px; }
-button.echar.moneda { display: grid; place-items: center; width: 76px; height: 76px; padding: 0; border-radius: 50%; font-size: 20px; }
+
+/* El botón de guardar queda siempre a mano, al pie de la pantalla */
+.barra-guardar {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--fondo) 30%);
+}
 
 details { margin: 8px 0 12px; }
 summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+
+/* Guía para instalar la app */
+.pasos { margin: 8px 0 12px; padding-left: 22px; font-size: 15px; }
+.pasos li { margin-bottom: 6px; }
+.instalar { border-color: var(--oro); }
