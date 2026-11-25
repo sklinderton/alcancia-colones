@@ -116,6 +116,10 @@ La app se sirve desde la rama `gh-pages`. Para actualizarla:
 git subtree push --prefix alcancia-app origin gh-pages
 ```
 
+## Mantener la nube activa
+
+El plan gratuito de Supabase pausa el proyecto tras una semana sin uso, y mientras está pausado la app y el ESP32 no pueden conectarse. El workflow [`mantener-supabase.yml`](.github/workflows/mantener-supabase.yml) consulta la base de datos todos los días para evitarlo. Si aun así se pausa, se restaura desde el panel de Supabase con **Restore project**.
+
 ## Seguridad
 
 - La clave pública de `config.js` puede estar en el repositorio: las políticas RLS protegen los datos.

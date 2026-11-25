@@ -1,0 +1,32 @@
+# El plan gratuito de Supabase pausa el proyecto tras una semana sin uso.
+# Una consulta diaria a la base de datos lo mantiene activo.
+name: Mantener Supabase activo
+
+on:
+  schedule:
+    - cron: "17 14 * * *"  # Todos los días, 8:17 a. m. en Costa Rica
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # La URL y la clave pública salen de la configuración de la app
+      - name: Consultar la base de datos
+        run: |
+          url=$(grep -o 'url: "[^"]*"' alcancia-app/config.js | cut -d'"' -f2)
+          clave=$(grep -o 'anonKey: "[^"]*"' alcancia-app/config.js | cut -d'"' -f2)
+          codigo=$(curl -s -o respuesta.txt -w "%{http_code}" --retry 3 --retry-delay 20 \
+            -H "apikey: $clave" "$url/rest/v1/alcancias?select=id&limit=1")
+          echo "Supabase respondió $codigo"
+          if [ "$codigo" != "200" ]; then
+            cat respuesta.txt
+            echo "::error::Supabase no respondió 200. Si está pausado, restáuralo desde el panel de Supabase."
+            exit 1
+          fi
