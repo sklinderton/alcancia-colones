@@ -74,6 +74,7 @@ flowchart LR
 | `alcancia-wokwi/` | Firmware y circuito de Wokwi |
 | `alcancia-nube/` | Base de datos, Edge Function y pruebas |
 | `alcancia-app/` | App web instalable |
+| `alcancia-analisis/` | Cuaderno de análisis de datos y descarga de la base de datos |
 
 ## Probar el circuito en Wokwi
 
@@ -146,6 +147,8 @@ La tabla `eventos` de Supabase guarda cada depósito, moneda devuelta, apertura 
 | Monedas devueltas | Porcentaje que rechaza el monedero; arriba del 5 % sugiere volver a entrenarlo |
 
 Sin `url` en `config.js` la app abre en modo demostración con ocho semanas de datos de ejemplo.
+
+Además, la carpeta [`alcancia-analisis/`](alcancia-analisis/) tiene un cuaderno de Python que descarga los eventos de Supabase y responde la pregunta del proyecto: *¿cuánto efectivo acumula una persona sin darse cuenta, cuándo lo ahorra y qué tan rápido llega a su meta?* Usa una simulación Monte Carlo para la fecha de la meta y un modelo de aprendizaje automático (Isolation Forest) para detectar movimientos anómalos.
 
 ## Publicar la app
 
