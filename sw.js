@@ -1,5 +1,5 @@
 // Guarda la interfaz para que abra rápido; el saldo siempre viene de la red.
-const CACHE = "alcancia-v5";
+const CACHE = "alcancia-v6";
 const ARCHIVOS = ["./", "index.html", "estilos.css", "app.js", "analisis.js", "config.js", "icono.svg", "icono-192.png", "icono-512.png", "manifest.webmanifest"];
 
 self.addEventListener("install", (evento) => {
