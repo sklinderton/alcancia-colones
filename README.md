@@ -142,6 +142,7 @@ El plan gratuito de Supabase pausa el proyecto tras una semana sin uso, y mientr
 
 - Probado: las 13 pruebas de la nube (incluidos los billetes) y monedas enviadas desde Wokwi hasta Supabase.
 - Firmware con monedero: probado en Wokwi. Las 5 monedas generan sus pulsos (1 a 5) y se registran bien, igual que la moneda devuelta y la apertura. Falta probarlo con un CH-926 real.
+- Billetes: probados en Wokwi hasta Supabase (₡1000 y ₡5000). En la simulación los botones se atienden por interrupción, así no se pierden mientras el ESP32 espera a la nube, y dos toques seguidos se cuentan por separado.
 - Riesgo a medir con el monedero real: si dos monedas entran con menos de 300 ms entre sus pulsos, el ESP32 las suma como una sola (por ejemplo, ₡10 y ₡100 darían 5 pulsos, que es ₡500).
 - Sin probar: el entrenamiento del monedero con monedas de distintos años y el sensor IR de la devolución.
 - Análisis: los cálculos tienen pruebas con datos conocidos y los gráficos se revisaron en modo demostración; falta verlos con datos reales.
