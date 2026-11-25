@@ -151,9 +151,11 @@ Sin `url` en `config.js` la app abre en modo demostración con ocho semanas de d
 
 ## Alcancía virtual
 
-Para que cualquier persona pueda usarla sin la alcancía física ni Wokwi, la app tiene **Echar dinero**: una pantalla con monedas y billetes grandes que se tocan para depositar. Hace de ESP32 desde el teléfono: guarda el código y la clave del dispositivo solo en ese navegador y envía los depósitos a la misma Edge Function, con el mismo formato. Si no hay internet, los guarda y los reenvía después.
+Para que cualquier persona pueda usarla sin la alcancía física ni Wokwi, la app tiene **Echar dinero**: una pantalla donde se indica cuántas monedas y billetes de cada tipo se guardan, con − y + o escribiendo el número, y se guardan todos de una vez. Hace de ESP32 desde el teléfono: guarda el código y la clave del dispositivo solo en ese navegador y envía los depósitos a la misma Edge Function, con el mismo formato. Si no hay internet, los guarda y los reenvía después.
 
 Se entra con **Empezar sin cuenta** (inicio de sesión anónimo de Supabase): la alcancía queda ligada a ese teléfono. Con GitHub se puede abrir desde cualquier lugar.
+
+La app se puede instalar en el teléfono con su ícono. La pantalla de inicio explica cómo: en Android con el botón **Instalar la app** o el menú del navegador, y en iPhone desde Safari con **Compartir → Agregar a inicio**. En iPhone conviene instalarla antes de empezar, porque la app instalada no comparte los datos de Safari y la alcancía sin cuenta quedaría en Safari.
 
 Además, la carpeta [`alcancia-analisis/`](alcancia-analisis/) tiene un cuaderno de Python que descarga los eventos de Supabase y responde la pregunta del proyecto: *¿cuánto efectivo acumula una persona sin darse cuenta, cuándo lo ahorra y qué tan rápido llega a su meta?* Usa una simulación Monte Carlo para la fecha de la meta y un modelo de aprendizaje automático (Isolation Forest) para detectar movimientos anómalos.
 

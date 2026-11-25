@@ -63,14 +63,82 @@ function mostrarLogin(mensaje = "") {
     iniciar();
   };
 
-  raiz.replaceChildren(elemento("div", { class: "tarjeta" },
-    elemento("h1", {}, "Tu alcancía"),
-    elemento("p", { class: "ayuda" }, "Guarda tu vuelto y mira cuánto llevas desde el teléfono."),
-    elemento("p", { class: "error", role: "alert" }, mensaje),
-    elemento("div", { class: "columna" },
-      elemento("button", { onclick: entrarSinCuenta }, "Empezar sin cuenta"),
-      elemento("button", { class: "secundario", onclick: entrar }, "Entrar con GitHub")),
-    elemento("p", { class: "ayuda" }, "Sin cuenta, tu alcancía queda guardada en este teléfono.")));
+  estado.vista = "login";
+  raiz.replaceChildren(...[
+    tarjetaInstalacion({ antesDeEmpezar: true }),
+    elemento("div", { class: "tarjeta" },
+      elemento("h1", {}, "Tu alcancía"),
+      elemento("p", { class: "ayuda" }, "Guarda tu vuelto y mira cuánto llevas desde el teléfono."),
+      elemento("p", { class: "error", role: "alert" }, mensaje),
+      elemento("div", { class: "columna" },
+        elemento("button", { onclick: entrarSinCuenta }, "Empezar sin cuenta"),
+        elemento("button", { class: "secundario", onclick: entrar }, "Entrar con GitHub")),
+      elemento("p", { class: "ayuda" }, "Sin cuenta, tu alcancía queda guardada en este teléfono.")),
+  ].filter((parte) => parte !== null));
+}
+
+// ---------- Instalar como app ----------
+// Chrome y Edge en Android avisan que se puede instalar; en iPhone hay que hacerlo desde Safari.
+let avisoInstalacion = null;
+const estaInstalada = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const esIphone = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+window.addEventListener("beforeinstallprompt", (evento) => {
+  evento.preventDefault();
+  avisoInstalacion = evento;
+  if (estado.vista !== "virtual") dibujarActual();
+});
+window.addEventListener("appinstalled", () => {
+  avisoInstalacion = null;
+  guardarLocal("instalacion-oculta", true);
+  dibujarActual();
+});
+
+async function instalar() {
+  if (!avisoInstalacion) return;
+  avisoInstalacion.prompt();
+  await avisoInstalacion.userChoice;
+  avisoInstalacion = null;
+  dibujarActual();
+}
+
+// Antes de empezar se muestra siempre; dentro del panel se puede ocultar
+function tarjetaInstalacion({ antesDeEmpezar = false } = {}) {
+  if (modoDemo || estaInstalada() || (!antesDeEmpezar && leerLocal("instalacion-oculta", false))) return null;
+  const ocultar = () => {
+    guardarLocal("instalacion-oculta", true);
+    dibujarActual();
+  };
+  let pasos;
+  if (avisoInstalacion) {
+    pasos = [elemento("div", { class: "columna" }, elemento("button", { onclick: instalar }, "Instalar la app"))];
+  } else if (esIphone()) {
+    pasos = [
+      elemento("ol", { class: "pasos" },
+        elemento("li", {}, "Abre esta página en Safari."),
+        elemento("li", {}, "Toca Compartir: el cuadro con una flecha hacia arriba."),
+        elemento("li", {}, "Elige \"Agregar a inicio\" y luego \"Agregar\"."),
+        elemento("li", {}, "Abre la alcancía desde el ícono nuevo.")),
+      antesDeEmpezar ? elemento("p", { class: "ayuda" }, "En iPhone hazlo antes de empezar: la app instalada no ve lo que hiciste en Safari.") : null,
+    ];
+  } else {
+    pasos = [elemento("ol", { class: "pasos" },
+      elemento("li", {}, "Toca el menú del navegador (⋮ o ☰)."),
+      elemento("li", {}, "Elige \"Instalar app\" o \"Agregar a la pantalla principal\"."),
+      elemento("li", {}, "Abre la alcancía desde el ícono nuevo."))];
+  }
+  return elemento("section", { class: "tarjeta instalar", "aria-label": "Instalar la app" },
+    elemento("h2", {}, "Tenla como una app"),
+    elemento("p", { class: "ayuda" }, "Con su ícono en la pantalla de inicio y sin la barra del navegador."),
+    ...pasos.filter((paso) => paso !== null),
+    antesDeEmpezar ? null : elemento("button", { class: "enlace", onclick: ocultar }, "Ahora no"));
+}
+
+// Redibuja la pantalla actual (inicio de sesión o panel) cuando cambia la instalación
+function dibujarActual() {
+  if (estado.vista === "login") mostrarLogin();
+  else if (estado.alcancia && (estado.vista === "panel" || estado.vista === "virtual")) dibujarVista();
 }
 
 // ---------- Alcancía virtual: hace de ESP32 desde el teléfono ----------
@@ -100,6 +168,7 @@ const dispositivoVirtual = () => (estado.alcancia ? leerLocal(claveVirtual(estad
 
 function mostrarCredenciales({ alcancia_id: alcanciaId, codigo, clave }) {
   guardarLocal(claveVirtual(alcanciaId), { codigo, clave });
+  estado.vista = "crear";
   raiz.replaceChildren(elemento("div", { class: "tarjeta" },
     elemento("h1", {}, "Tu alcancía está lista"),
     elemento("p", { class: "ayuda" }, "Ya puedes echar dinero desde este teléfono con \"Echar dinero\"."),
@@ -113,7 +182,8 @@ function mostrarCredenciales({ alcancia_id: alcanciaId, codigo, clave }) {
     elemento("div", { class: "columna" }, elemento("button", { onclick: iniciar }, "Empezar"))));
 }
 
-const virtual = { ultimo: "", estado: "", enviando: false };
+const virtual = { ultimo: "", estado: "", enviando: false, carrito: {} };
+const MAXIMO_POR_DENOMINACION = 500;
 
 function sonidoDeposito() {
   try {
@@ -133,19 +203,26 @@ function sonidoDeposito() {
   navigator.vibrate?.(30);
 }
 
-async function echarVirtual(valor) {
+const montoCarrito = () => DENOMINACIONES.reduce((suma, valor) => suma + valor * (virtual.carrito[valor] ?? 0), 0);
+
+// Guarda de una vez todo lo que la persona indicó. Cada moneda o billete es un
+// evento, igual que cuando cae uno por uno en la alcancía física.
+async function guardarVirtual() {
+  const monto = montoCarrito();
+  if (monto === 0) return;
+  const ahora = new Date().toISOString();
+  const eventos = DENOMINACIONES.flatMap((valor) => Array.from({ length: virtual.carrito[valor] ?? 0 }, () => (
+    { id: `virtual-${crypto.randomUUID()}`, tipo: "deposito", denominacion: valor, ocurrido_en: ahora })));
   sonidoDeposito();
-  virtual.ultimo = `+${colones(valor)}`;
-  const evento = { id: `virtual-${crypto.randomUUID()}`, tipo: "deposito", denominacion: valor, ocurrido_en: new Date().toISOString() };
+  virtual.carrito = {};
+  virtual.ultimo = `+${colones(monto)}`;
   if (modoDemo) {
-    aplicarEvento({ ...evento, cantidad: 1, origen: "dispositivo" });
+    eventos.forEach((evento) => aplicarEvento({ ...evento, cantidad: 1, origen: "dispositivo" }));
     virtual.estado = `Guardado. Total: ${colones(total())}`;
     mostrarAlcanciaVirtual();
     return;
   }
-  const cola = leerLocal(claveCola(estado.alcancia.id), []);
-  cola.push(evento);
-  guardarLocal(claveCola(estado.alcancia.id), cola);
+  guardarLocal(claveCola(estado.alcancia.id), [...leerLocal(claveCola(estado.alcancia.id), []), ...eventos]);
   virtual.estado = "Guardando…";
   mostrarAlcanciaVirtual();
   await enviarColaVirtual();
@@ -214,40 +291,70 @@ function formularioConexionVirtual() {
 function mostrarAlcanciaVirtual() {
   estado.vista = "virtual";
   const conectada = modoDemo || dispositivoVirtual();
-  const boton = (valor) => elemento("button", {
-    type: "button",
-    class: esBillete(valor) ? "echar billete" : "echar moneda",
-    "aria-label": `Echar ${esBillete(valor) ? "un billete" : "una moneda"} de ${colones(valor)}`,
-    onclick: () => echarVirtual(valor),
-  }, esBillete(valor) ? colones(valor) : String(valor));
+  if (!conectada) {
+    raiz.replaceChildren(encabezadoVirtual(), formularioConexionVirtual());
+    return;
+  }
 
-  raiz.replaceChildren(...[
-    elemento("header", { class: "encabezado" },
-      elemento("div", {},
-        elemento("h1", {}, "Echar dinero"),
-        elemento("div", { class: "estado" }, "Alcancía virtual")),
-      elemento("button", { class: "enlace", onclick: volverAlPanel }, "Volver")),
-    conectada ? elemento("section", { class: "pantalla-virtual", "aria-live": "polite" },
-      elemento("div", { class: "ultimo" }, virtual.ultimo || colones(total())),
-      elemento("div", { class: "detalle-pantalla" }, virtual.estado || "Toca lo que vas a guardar")) : null,
-    conectada ? elemento("section", { class: "tarjeta" },
-      elemento("h2", {}, "Billetes"),
-      elemento("div", { class: "rejilla-billetes" }, ...[...BILLETES].reverse().map(boton))) : null,
-    conectada ? elemento("section", { class: "tarjeta" },
-      elemento("h2", {}, "Monedas"),
-      elemento("div", { class: "rejilla-monedas" }, ...[...MONEDAS].reverse().map(boton))) : null,
-    conectada ? null : formularioConexionVirtual(),
-  ].filter((parte) => parte !== null));
+  // Se actualizan solo los textos al cambiar una cantidad, para no perder el foco al escribir
+  const pantallaMonto = elemento("div", { class: "ultimo" });
+  const pantallaDetalle = elemento("div", { class: "detalle-pantalla" });
+  const guardar = elemento("button", { type: "button", onclick: guardarVirtual });
+  const refrescar = () => {
+    const monto = montoCarrito();
+    pantallaMonto.textContent = monto ? colones(monto) : (virtual.ultimo || colones(total()));
+    pantallaDetalle.textContent = monto ? "Esto vas a guardar" : (virtual.estado || "Indica cuántas monedas y billetes vas a guardar");
+    guardar.textContent = monto ? `Guardar ${colones(monto)}` : "Guardar";
+    guardar.disabled = monto === 0;
+  };
+
+  const fila = (valor) => {
+    const campo = elemento("input", {
+      type: "number", inputMode: "numeric", min: 0, max: MAXIMO_POR_DENOMINACION, step: 1,
+      value: String(virtual.carrito[valor] ?? 0), "aria-label": `Cantidad de ${colones(valor)}`,
+    });
+    const fijar = (cantidad) => {
+      const limpia = Math.min(MAXIMO_POR_DENOMINACION, Math.max(0, Math.floor(Number(cantidad) || 0)));
+      virtual.carrito[valor] = limpia;
+      if (String(limpia) !== campo.value) campo.value = String(limpia);
+      refrescar();
+    };
+    campo.addEventListener("input", () => fijar(campo.value));
+    campo.addEventListener("focus", () => campo.select());
+    const nombre = esBillete(valor) ? "un billete" : "una moneda";
+    return elemento("div", { class: "fila" },
+      elemento("span", { class: "moneda" }, ficha(valor)),
+      elemento("span", { class: "contador" },
+        elemento("button", { type: "button", class: "secundario", "aria-label": `Quitar ${nombre} de ${colones(valor)}`, onclick: () => fijar((virtual.carrito[valor] ?? 0) - 1) }, "−"),
+        campo,
+        elemento("button", { type: "button", class: "secundario", "aria-label": `Agregar ${nombre} de ${colones(valor)}`, onclick: () => fijar((virtual.carrito[valor] ?? 0) + 1) }, "+")));
+  };
+
+  raiz.replaceChildren(
+    encabezadoVirtual(),
+    elemento("section", { class: "pantalla-virtual", "aria-live": "polite" }, pantallaMonto, pantallaDetalle),
+    elemento("section", { class: "tarjeta" }, elemento("h2", {}, "Monedas"), ...[...MONEDAS].reverse().map(fila)),
+    elemento("section", { class: "tarjeta" }, elemento("h2", {}, "Billetes"), ...[...BILLETES].reverse().map(fila)),
+    elemento("div", { class: "barra-guardar" }, guardar));
+  refrescar();
 }
+
+const encabezadoVirtual = () => elemento("header", { class: "encabezado" },
+  elemento("div", {},
+    elemento("h1", {}, "Echar dinero"),
+    elemento("div", { class: "estado" }, "Alcancía virtual")),
+  elemento("button", { class: "enlace", onclick: volverAlPanel }, "Volver"));
 
 function volverAlPanel() {
   estado.vista = "panel";
+  virtual.carrito = {};
   virtual.ultimo = "";
   virtual.estado = "";
   mostrarPanel();
 }
 
 function mostrarCrearAlcancia() {
+  estado.vista = "crear";
   const error = elemento("p", { class: "error", role: "alert" });
   const nombre = elemento("input", { name: "nombre", value: "Mi alcancía", maxLength: 40, required: true });
   const meta = elemento("input", { name: "meta", type: "number", value: 10000, min: 100, step: 100, required: true });
@@ -374,6 +481,7 @@ function mostrarPanel() {
     elemento("div", { class: "acciones" },
       elemento("button", { onclick: mostrarAlcanciaVirtual }, "Echar dinero"),
       elemento("button", { class: "secundario", onclick: abrirRetiro, disabled: total() === 0 }, "Hacer retiro")),
+    tarjetaInstalacion(),
     elemento("section", { class: "tarjeta" },
       elemento("h2", {}, "Billetes"),
       ...BILLETES.map(filaDenominacion)),
