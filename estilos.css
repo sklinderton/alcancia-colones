@@ -220,3 +220,11 @@ dialog .acciones { margin: 8px 0 0; }
 .grafico .barra.tenue { opacity: 0.45; }
 .grafico .zona { fill: transparent; }
 .grafico .zona:hover { fill: var(--marca-suave); opacity: 0.5; }
+
+/* Un solo botón de acción a todo el ancho */
+.acciones.una { grid-template-columns: 1fr; }
+
+/* Los billetes se distinguen de las monedas por su forma */
+.ficha.billete { width: 56px; height: 34px; border-radius: 6px; font-size: 12px; }
+
+.meta .enlace { min-height: 32px; padding: 0 2px; font-size: 13px; text-decoration: underline; }

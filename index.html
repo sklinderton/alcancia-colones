@@ -15,13 +15,28 @@
 
   <dialog id="dialogo-retiro" aria-labelledby="titulo-retiro">
     <form method="dialog" id="formulario-retiro">
-      <h2 id="titulo-retiro">¿Cuánto sacaste?</h2>
-      <p class="ayuda">Así el saldo sigue coincidiendo con lo que hay adentro.</p>
+      <h2 id="titulo-retiro">¿Qué vas a sacar?</h2>
+      <p class="ayuda">Se registra el retiro y la alcancía se abre unos segundos para que lo saques.</p>
       <div id="lista-retiro"></div>
       <p id="error-retiro" class="error" role="alert"></p>
       <div class="acciones">
         <button type="button" class="secundario" id="cancelar-retiro">Cancelar</button>
-        <button type="submit" id="confirmar-retiro">Registrar retiro</button>
+        <button type="submit" id="confirmar-retiro">Retirar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dialogo-meta" aria-labelledby="titulo-meta">
+    <form method="dialog" id="formulario-meta">
+      <h2 id="titulo-meta">Cambiar la meta</h2>
+      <p class="ayuda">Puedes ponerla tan alta como quieras; el ahorro también puede pasarla.</p>
+      <label>Meta en colones
+        <input id="nueva-meta" type="number" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <p id="error-meta" class="error" role="alert"></p>
+      <div class="acciones">
+        <button type="button" class="secundario" id="cancelar-meta">Cancelar</button>
+        <button type="submit">Guardar</button>
       </div>
     </form>
   </dialog>
