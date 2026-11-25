@@ -149,6 +149,50 @@ portMUX_TYPE candadoPulsos = portMUX_INITIALIZER_UNLOCKED;
 volatile unsigned long ignorarPulsosHastaMs = 0;
 volatile bool monedaDevuelta = false;
 
+// Solo simulación: los botones se atienden por interrupción, así no se pierden
+// mientras el ESP32 espera la respuesta de la nube (puede tardar varios segundos)
+const int TOTAL_BOTONES = 11;  // 5 monedas, 5 billetes y la devolución
+const int BOTON_DEVOLUCION = 10;
+const unsigned long REBOTE_BOTON_MS = 250;
+volatile uint32_t botonesPendientes = 0;
+volatile unsigned long ultimoToqueMs[TOTAL_BOTONES] = {0};
+
+void IRAM_ATTR alTocarBoton(void *argumento) {
+  int boton = (int)(intptr_t)argumento;
+  unsigned long ahora = millis();
+  portENTER_CRITICAL_ISR(&candadoPulsos);
+  if (ahora - ultimoToqueMs[boton] >= REBOTE_BOTON_MS) {
+    ultimoToqueMs[boton] = ahora;
+    botonesPendientes |= (1u << boton);
+  }
+  portEXIT_CRITICAL_ISR(&candadoPulsos);
+}
+
+int pinDeBoton(int boton) {
+  if (boton < PRIMER_BILLETE) {
+    return PINES_MONEDA[boton];
+  }
+  if (boton < BOTON_DEVOLUCION) {
+    return PINES_BILLETE[boton - PRIMER_BILLETE];
+  }
+  return PIN_OBJETO_RARO;
+}
+
+// Toma un botón pendiente (el de menor número) o devuelve -1 si no hay
+int tomarBotonPendiente() {
+  int boton = -1;
+  portENTER_CRITICAL(&candadoPulsos);
+  for (int i = 0; i < TOTAL_BOTONES; i++) {
+    if (botonesPendientes & (1u << i)) {
+      botonesPendientes &= ~(1u << i);
+      boton = i;
+      break;
+    }
+  }
+  portEXIT_CRITICAL(&candadoPulsos);
+  return boton;
+}
+
 void IRAM_ATTR contarPulso(LineaPulsos &linea) {
   unsigned long ahora = millis();
   portENTER_CRITICAL_ISR(&candadoPulsos);
@@ -460,17 +504,6 @@ int pulsosDe(const Canal *canales, int totalCanales, int indice) {
   return 0;
 }
 
-bool botonPresionado(int pin) {
-  if (digitalRead(pin) == HIGH) {
-    return false;
-  }
-  delay(30);
-  while (digitalRead(pin) == LOW) {
-    delay(5);
-  }
-  return true;
-}
-
 void setup() {
   Serial.begin(115200);
 
@@ -488,13 +521,11 @@ void setup() {
     digitalWrite(PIN_SIM_MONEDERO, HIGH);
     pinMode(PIN_SIM_BILLETES, OUTPUT);
     digitalWrite(PIN_SIM_BILLETES, HIGH);
-    for (int pin : PINES_MONEDA) {
-      pinMode(pin, INPUT_PULLUP);
+    for (int boton = 0; boton < TOTAL_BOTONES; boton++) {
+      int pin = pinDeBoton(boton);
+      pinMode(pin, pin == 35 ? INPUT : INPUT_PULLUP);  // El 35 usa la resistencia de pull-up externa
+      attachInterruptArg(digitalPinToInterrupt(pin), alTocarBoton, (void *)(intptr_t)boton, FALLING);
     }
-    for (int pin : PINES_BILLETE) {
-      pinMode(pin, pin == 35 ? INPUT : INPUT_PULLUP);
-    }
-    pinMode(PIN_OBJETO_RARO, INPUT_PULLUP);
   } else {
     attachInterrupt(digitalPinToInterrupt(PIN_DEVOLUCION), alDevolverMoneda, FALLING);
   }
@@ -512,18 +543,17 @@ void setup() {
 
 void loop() {
   if (MODO_SIMULACION) {
-    for (int i = 0; i < PRIMER_BILLETE; i++) {
-      if (botonPresionado(PINES_MONEDA[i])) {
-        simularLector(PIN_SIM_MONEDERO, pulsosDe(CANALES_MONEDAS, 5, i));
-      }
-    }
-    for (int i = PRIMER_BILLETE; i < TOTAL_DENOMINACIONES; i++) {
-      if (botonPresionado(PINES_BILLETE[i - PRIMER_BILLETE])) {
-        simularLector(PIN_SIM_BILLETES, pulsosDe(CANALES_BILLETES, 5, i));
-      }
-    }
-    if (botonPresionado(PIN_OBJETO_RARO)) {
+    // Un botón por vuelta, y se espera a que terminen sus pulsos para que dos
+    // toques seguidos no se sumen como si fueran una sola moneda o billete
+    int boton = tomarBotonPendiente();
+    if (boton == BOTON_DEVOLUCION) {
       registrarDevolucion();
+    } else if (boton >= PRIMER_BILLETE) {
+      simularLector(PIN_SIM_BILLETES, pulsosDe(CANALES_BILLETES, 5, boton));
+      delay(FIN_PULSOS_MS + 20);
+    } else if (boton >= 0) {
+      simularLector(PIN_SIM_MONEDERO, pulsosDe(CANALES_MONEDAS, 5, boton));
+      delay(FIN_PULSOS_MS + 20);
     }
   } else if (monedaDevuelta) {
     monedaDevuelta = false;
